@@ -26,22 +26,39 @@ const ScanPage = () => {
   const [worker, setWorker] = useState(null);
   
   useEffect(() => {
+    let isMounted = true;
+    
     const initWorker = async () => {
-      const newWorker = await createWorker({
-        logger: progress => {
+      try {
+        // Crear worker sin logger para evitar problemas de clonación
+        const newWorker = await createWorker();
+        
+        // Configurar el progreso manualmente
+        newWorker.setProgressHandler((progress) => {
+          if (!isMounted) return;
           if (progress.status === 'recognizing text') {
             setOcrProgress(parseInt(progress.progress * 100));
           }
+        });
+        
+        await newWorker.loadLanguage('eng');
+        await newWorker.initialize('eng');
+        
+        if (isMounted) {
+          setWorker(newWorker);
         }
-      });
-      await newWorker.loadLanguage('eng');
-      await newWorker.initialize('eng');
-      setWorker(newWorker);
+      } catch (err) {
+        console.error('Error al inicializar Tesseract:', err);
+        if (isMounted) {
+          setError('No se pudo inicializar el reconocimiento de texto');
+        }
+      }
     };
     
     initWorker();
     
     return () => {
+      isMounted = false;
       if (worker) {
         worker.terminate();
       }
@@ -74,23 +91,33 @@ const ScanPage = () => {
     
     setIsProcessing(true);
     setError('');
+    setOcrProgress(0);
     
     try {
       // Realizar OCR en la imagen
-      const { data } = await worker.recognize(imageSrc);
+      const result = await worker.recognize(imageSrc);
+      const text = result.data.text;
       
       // Buscar patrones de números que podrían ser guías
-      // Este es un patrón simple para números de 8 dígitos, ajustar según necesidad
+      // Patrón para números de 8 dígitos (como el ejemplo de la imagen)
       const guidePattern = /\b\d{8}\b/g;
-      const matches = data.text.match(guidePattern);
+      const matches = text.match(guidePattern);
       
       if (matches && matches.length > 0) {
         setExtractedGuide(matches[0]);
       } else {
-        // Si no encuentra un patrón específico, mostrar todo el texto extraído
-        // y permitir al usuario seleccionar o editar
-        const cleanText = data.text.replace(/\s+/g, ' ').trim();
-        setExtractedGuide(cleanText);
+        // Intentar con números de 6 a 10 dígitos
+        const extendedPattern = /\b\d{6,10}\b/g;
+        const extendedMatches = text.match(extendedPattern);
+        
+        if (extendedMatches && extendedMatches.length > 0) {
+          setExtractedGuide(extendedMatches[0]);
+        } else {
+          // Si no encuentra un patrón específico, mostrar todo el texto extraído
+          // y permitir al usuario seleccionar o editar
+          const cleanText = text.replace(/\s+/g, ' ').trim();
+          setExtractedGuide(cleanText.substring(0, 30)); // Limitar a 30 caracteres para evitar textos muy largos
+        }
       }
     } catch (error) {
       console.error('Error al procesar la imagen:', error);
