@@ -1,0 +1,259 @@
+import { useState, useEffect } from 'react';
+import { 
+  Container, Typography, Box, Paper, List, ListItem, 
+  ListItemText, Divider, TextField, InputAdornment,
+  IconButton, Chip, FormControl, InputLabel, Select, MenuItem,
+  CircularProgress, Alert, Button
+} from '@mui/material';
+import { Search, CloudDone, CloudOff, Refresh } from '@mui/icons-material';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { useFirebase } from '../context/FirebaseContext';
+
+const HistoryPage = () => {
+  const { getGuideRecords, currentUser } = useFirebase();
+  const [records, setRecords] = useState([]);
+  const [filteredRecords, setFilteredRecords] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState('all');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [dataSource, setDataSource] = useState('local'); // 'local' o 'firebase'
+
+  // Cargar registros
+  useEffect(() => {
+    loadRecords();
+  }, [dataSource]);
+  
+  // Función para cargar registros desde la fuente seleccionada
+  const loadRecords = async () => {
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      if (dataSource === 'firebase' && currentUser) {
+        // Cargar desde Firebase
+        const firebaseRecords = await getGuideRecords();
+        setRecords(firebaseRecords);
+        setFilteredRecords(firebaseRecords);
+      } else {
+        // Cargar desde localStorage
+        const loadedRecords = JSON.parse(localStorage.getItem('guideRecords') || '[]');
+        setRecords(loadedRecords);
+        setFilteredRecords(loadedRecords);
+      }
+    } catch (error) {
+      console.error('Error al cargar registros:', error);
+      setError('Error al cargar registros: ' + error.message);
+      // Si falla Firebase, cargar desde localStorage como respaldo
+      if (dataSource === 'firebase') {
+        const loadedRecords = JSON.parse(localStorage.getItem('guideRecords') || '[]');
+        setRecords(loadedRecords);
+        setFilteredRecords(loadedRecords);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Cambiar fuente de datos
+  const toggleDataSource = () => {
+    setDataSource(prev => prev === 'local' ? 'firebase' : 'local');
+  };
+
+  // Filtrar registros cuando cambia el término de búsqueda o el filtro de fecha
+  useEffect(() => {
+    let filtered = [...records];
+    
+    // Filtrar por número de guía
+    if (searchTerm) {
+      filtered = filtered.filter(record => 
+        record.guideNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Filtrar por fecha
+    if (dateFilter !== 'all') {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      switch (dateFilter) {
+        case 'today':
+          filtered = filtered.filter(record => 
+            record.date.split('T')[0] === todayStr
+          );
+          break;
+        case 'week':
+          const weekAgo = new Date();
+          weekAgo.setDate(today.getDate() - 7);
+          filtered = filtered.filter(record => 
+            new Date(record.date) >= weekAgo
+          );
+          break;
+        case 'month':
+          const monthAgo = new Date();
+          monthAgo.setMonth(today.getMonth() - 1);
+          filtered = filtered.filter(record => 
+            new Date(record.date) >= monthAgo
+          );
+          break;
+        default:
+          break;
+      }
+    }
+    
+    // Ordenar por fecha (más reciente primero)
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    setFilteredRecords(filtered);
+  }, [records, searchTerm, dateFilter]);
+
+  // Formatear fecha para mostrar
+  const formatDate = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, "dd 'de' MMMM 'de' yyyy, HH:mm", { locale: es });
+    } catch (error) {
+      return "Fecha inválida";
+    }
+  };
+
+  return (
+    <Container maxWidth="sm" sx={{ pt: 2, pb: 8 }}>
+      <Typography variant="h4" component="h1" gutterBottom align="center">
+        Historial de Guías
+      </Typography>
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ mb: 2 }}>
+          <TextField
+            fullWidth
+            variant="outlined"
+            label="Buscar por número de guía"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton>
+                    <Search />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Box>
+        
+        <Box sx={{ mb: 3 }}>
+          <FormControl fullWidth variant="outlined">
+            <InputLabel>Filtrar por fecha</InputLabel>
+            <Select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              label="Filtrar por fecha"
+            >
+              <MenuItem value="all">Todas las fechas</MenuItem>
+              <MenuItem value="today">Hoy</MenuItem>
+              <MenuItem value="week">Última semana</MenuItem>
+              <MenuItem value="month">Último mes</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+        
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={loadRecords}
+            size="small"
+          >
+            Actualizar
+          </Button>
+          
+          {currentUser && (
+            <Button
+              variant="outlined"
+              color={dataSource === 'firebase' ? 'primary' : 'secondary'}
+              onClick={toggleDataSource}
+              size="small"
+            >
+              {dataSource === 'local' ? 'Ver registros en la nube' : 'Ver registros locales'}
+            </Button>
+          )}
+        </Box>
+        
+        <Typography variant="subtitle1" gutterBottom>
+          {filteredRecords.length} registro(s) encontrado(s) {dataSource === 'firebase' ? 'en la nube' : 'localmente'}
+        </Typography>
+        
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <List sx={{ width: '100%', bgcolor: 'background.paper' }}>
+            {filteredRecords.length > 0 ? (
+            filteredRecords.map((record, index) => (
+              <Box key={index}>
+                <ListItem alignItems="flex-start">
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="h6" component="span">
+                          {record.guideNumber}
+                        </Typography>
+                        <Chip
+                          icon={record.synced ? <CloudDone /> : <CloudOff />}
+                          label={record.synced ? "Sincronizado" : "Pendiente"}
+                          color={record.synced ? "success" : "warning"}
+                          size="small"
+                        />
+                      </Box>
+                    }
+                    secondary={
+                      <>
+                        <Typography component="span" variant="body2" color="text.primary">
+                          {formatDate(record.date)}
+                        </Typography>
+                        {record.location && (
+                          <Typography component="p" variant="body2">
+                            {record.location.latitude !== 'No disponible' 
+                              ? `Lat: ${record.location.latitude.toFixed(6)}, Long: ${record.location.longitude.toFixed(6)}`
+                              : 'Ubicación no disponible'
+                            }
+                          </Typography>
+                        )}
+                        {record.fileName && (
+                          <Typography component="p" variant="body2">
+                            Archivo: {record.fileName}
+                          </Typography>
+                        )}
+                      </>
+                    }
+                  />
+                </ListItem>
+                {index < filteredRecords.length - 1 && <Divider component="li" />}
+              </Box>
+            ))
+          ) : (
+            <ListItem>
+              <ListItemText 
+                primary="No hay registros" 
+                secondary={`No se encontraron registros ${dataSource === 'firebase' ? 'en la nube' : 'localmente'}`}
+              />
+            </ListItem>
+          )}
+        </List>
+        )}
+      </Paper>
+    </Container>
+  );
+};
+
+export default HistoryPage;

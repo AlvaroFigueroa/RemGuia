@@ -1,0 +1,96 @@
+/* Estilos generales */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  background-color: #f5f5f5;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Ajustes para el contenido principal con navegación inferior */
+main {
+  padding-bottom: 56px; /* Altura de la barra de navegación */
+}
+
+/* Estilos para la página de escaneo */
+.file-upload-container {
+  border: 2px dashed #cccccc;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.file-upload-container:hover {
+  border-color: #1976d2;
+  background-color: rgba(25, 118, 210, 0.05);
+}
+
+.pdf-preview {
+  max-width: 100%;
+  overflow: hidden;
+  margin: 16px 0;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Animaciones */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.pulse-animation {
+  animation: pulse 1.5s infinite;
+}
+
+/* Estilos para la lista de historial */
+.history-item {
+  transition: background-color 0.3s ease;
+}
+
+.history-item:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* Estilos para la página de login */
+.auth-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+}
+
+/* Estilos para la página 404 */
+.not-found-container {
+  text-align: center;
+  padding: 2rem;
+}
+
+.not-found-code {
+  font-size: 8rem;
+  font-weight: bold;
+  color: #1976d2;
+  margin-bottom: 1rem;
+}
+
+/* Ajustes para dispositivos móviles */
+@media (max-width: 600px) {
+  .MuiContainer-root {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
