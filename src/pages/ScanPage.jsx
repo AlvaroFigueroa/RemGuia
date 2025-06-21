@@ -6,7 +6,8 @@ import {
 } from '@mui/material';
 import { CameraAlt, Save, FlipCameraIos, Refresh } from '@mui/icons-material';
 import Webcam from 'react-webcam';
-import { createWorker } from 'tesseract.js';
+// Importamos directamente Tesseract en lugar de solo createWorker
+import Tesseract from 'tesseract.js';
 import { useFirebase } from '../context/FirebaseContext';
 
 const ScanPage = () => {
@@ -22,46 +23,26 @@ const ScanPage = () => {
   const webcamRef = useRef(null);
   const [ocrProgress, setOcrProgress] = useState(0);
   
-  // Inicializar Tesseract worker
-  const [worker, setWorker] = useState(null);
+  // No necesitamos mantener una referencia al worker
+  // Usaremos Tesseract.recognize directamente
   
   useEffect(() => {
-    let isMounted = true;
-    
-    const initWorker = async () => {
+    // Precargamos los datos de Tesseract para que esté listo cuando se necesite
+    // pero no creamos un worker aún
+    const preloadTesseract = async () => {
       try {
-        // Crear worker sin logger para evitar problemas de clonación
-        const newWorker = await createWorker();
-        
-        // Configurar el progreso manualmente
-        newWorker.setProgressHandler((progress) => {
-          if (!isMounted) return;
-          if (progress.status === 'recognizing text') {
-            setOcrProgress(parseInt(progress.progress * 100));
-          }
-        });
-        
-        await newWorker.loadLanguage('eng');
-        await newWorker.initialize('eng');
-        
-        if (isMounted) {
-          setWorker(newWorker);
-        }
+        // Solo verificamos que Tesseract esté disponible
+        console.log('Tesseract.js versión:', Tesseract.version);
       } catch (err) {
-        console.error('Error al inicializar Tesseract:', err);
-        if (isMounted) {
-          setError('No se pudo inicializar el reconocimiento de texto');
-        }
+        console.error('Error al precargar Tesseract:', err);
+        setError('Error al inicializar el reconocimiento de texto');
       }
     };
     
-    initWorker();
+    preloadTesseract();
     
     return () => {
-      isMounted = false;
-      if (worker) {
-        worker.terminate();
-      }
+      // No hay worker que terminar
     };
   }, []);
 
@@ -84,8 +65,8 @@ const ScanPage = () => {
   
   // Función para procesar la imagen y extraer texto
   const processImage = async (imageSrc) => {
-    if (!worker || !imageSrc) {
-      setError('No se pudo inicializar el reconocimiento de texto');
+    if (!imageSrc) {
+      setError('No se pudo capturar la imagen');
       return;
     }
     
@@ -94,34 +75,53 @@ const ScanPage = () => {
     setOcrProgress(0);
     
     try {
-      // Realizar OCR en la imagen
-      const result = await worker.recognize(imageSrc);
+      // Usar Tesseract.recognize directamente sin worker
+      const result = await Tesseract.recognize(
+        imageSrc,
+        'eng', // idioma
+        {
+          logger: progress => {
+            if (progress.status === 'recognizing text') {
+              setOcrProgress(parseInt(progress.progress * 100));
+            }
+          }
+        }
+      );
+      
       const text = result.data.text;
+      console.log('Texto extraído:', text);
       
       // Buscar patrones de números que podrían ser guías
-      // Patrón para números de 8 dígitos (como el ejemplo de la imagen)
-      const guidePattern = /\b\d{8}\b/g;
-      const matches = text.match(guidePattern);
+      // Primero buscamos el número de guía (N°XXXXX)
+      const guideNumberPattern = /N[°º]\s*(\d{5,6})/i;
+      const guideNumberMatch = text.match(guideNumberPattern);
       
-      if (matches && matches.length > 0) {
-        setExtractedGuide(matches[0]);
+      if (guideNumberMatch && guideNumberMatch[1]) {
+        setExtractedGuide(guideNumberMatch[1]);
       } else {
-        // Intentar con números de 6 a 10 dígitos
-        const extendedPattern = /\b\d{6,10}\b/g;
-        const extendedMatches = text.match(extendedPattern);
+        // Luego buscamos el RUT (XX.XXX.XXX-X)
+        const rutPattern = /(\d{1,2}[\.,]\d{3}[\.,]\d{3}[-\.]\d{1})/;
+        const rutMatch = text.match(rutPattern);
         
-        if (extendedMatches && extendedMatches.length > 0) {
-          setExtractedGuide(extendedMatches[0]);
+        if (rutMatch && rutMatch[1]) {
+          setExtractedGuide(rutMatch[1].replace(/[\.,]/g, ''));
         } else {
-          // Si no encuentra un patrón específico, mostrar todo el texto extraído
-          // y permitir al usuario seleccionar o editar
-          const cleanText = text.replace(/\s+/g, ' ').trim();
-          setExtractedGuide(cleanText.substring(0, 30)); // Limitar a 30 caracteres para evitar textos muy largos
+          // Intentar con cualquier secuencia de 6-10 dígitos
+          const extendedPattern = /\b\d{6,10}\b/g;
+          const extendedMatches = text.match(extendedPattern);
+          
+          if (extendedMatches && extendedMatches.length > 0) {
+            setExtractedGuide(extendedMatches[0]);
+          } else {
+            // Si no encuentra un patrón específico, mostrar todo el texto extraído
+            const cleanText = text.replace(/\s+/g, ' ').trim();
+            setExtractedGuide(cleanText.substring(0, 30)); // Limitar a 30 caracteres
+          }
         }
       }
     } catch (error) {
       console.error('Error al procesar la imagen:', error);
-      setError('Error al procesar la imagen: ' + error.message);
+      setError('Error al procesar la imagen');
     } finally {
       setIsProcessing(false);
     }
