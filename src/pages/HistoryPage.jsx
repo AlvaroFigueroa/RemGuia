@@ -3,9 +3,9 @@ import {
   Container, Typography, Box, Paper, List, ListItem, 
   ListItemText, Divider, TextField, InputAdornment,
   IconButton, Chip, FormControl, InputLabel, Select, MenuItem,
-  CircularProgress, Alert, Button
+  CircularProgress, Alert, Button, Tooltip
 } from '@mui/material';
-import { Search, CloudDone, CloudOff, Refresh } from '@mui/icons-material';
+import { Search, CloudDone, CloudOff, Refresh, LocationOn } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useFirebase } from '../context/FirebaseContext';
@@ -222,12 +222,28 @@ const HistoryPage = () => {
                           {formatDate(record.date)}
                         </Typography>
                         {record.location && (
-                          <Typography component="p" variant="body2">
-                            {record.location.latitude !== 'No disponible' 
-                              ? `Lat: ${record.location.latitude.toFixed(6)}, Long: ${record.location.longitude.toFixed(6)}`
-                              : 'Ubicación no disponible'
-                            }
-                          </Typography>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Typography component="p" variant="body2" sx={{ flex: 1 }}>
+                              {record.location.latitude !== 'No disponible' 
+                                ? `Ubicación registrada`
+                                : 'Ubicación no disponible'
+                              }
+                            </Typography>
+                            {record.location.latitude !== 'No disponible' && (
+                              <Tooltip title="Ver en Google Maps">
+                                <IconButton 
+                                  size="small" 
+                                  color="primary" 
+                                  onClick={() => {
+                                    const url = `https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`;
+                                    window.open(url, '_blank');
+                                  }}
+                                >
+                                  <LocationOn />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Box>
                         )}
                         {record.fileName && (
                           <Typography component="p" variant="body2">
