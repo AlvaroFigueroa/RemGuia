@@ -137,23 +137,39 @@ const ScanPage = () => {
   };
 
   // Función para obtener la ubicación actual
+  // Función para obtener la ubicación como una promesa
   const getLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-        },
-        () => {
-          setError('No se pudo obtener la ubicación');
-        }
-      );
-    } else {
-      setError('Geolocalización no soportada en este navegador');
-    }
+    return new Promise((resolve, reject) => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const locationData = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            };
+            setLocation(locationData);
+            resolve(locationData);
+          },
+          (error) => {
+            console.warn('Error de geolocalización:', error.message);
+            reject('No se pudo obtener la ubicación');
+          },
+          { timeout: 10000, enableHighAccuracy: true } // Opciones para mejorar la precisión
+        );
+      } else {
+        reject('Geolocalización no soportada en este navegador');
+      }
+    });
   };
+  
+  // Actualizar ubicación al cargar la página
+  useEffect(() => {
+    // Intentar obtener ubicación al inicio
+    getLocation().catch(error => {
+      console.warn('Error inicial de ubicación:', error);
+      // No mostramos error al usuario en este punto para no interrumpir la experiencia
+    });
+  }, []);
 
   // Función para guardar el registro
   const saveRecord = async () => {
@@ -165,9 +181,16 @@ const ScanPage = () => {
     setIsLoading(true);
     setError('');
 
+    let currentLocation = location;
+    
     // Obtener ubicación si no se ha obtenido aún
-    if (!location) {
-      getLocation();
+    if (!currentLocation) {
+      try {
+        currentLocation = await getLocation();
+      } catch (locationError) {
+        console.warn('No se pudo obtener la ubicación:', locationError);
+        // Continuamos con el guardado aunque no tengamos ubicación
+      }
     }
 
     try {
@@ -175,7 +198,7 @@ const ScanPage = () => {
       const record = {
         guideNumber: extractedGuide,
         date: new Date().toISOString(),
-        location: location || { latitude: 'No disponible', longitude: 'No disponible' },
+        location: currentLocation || { latitude: 'No disponible', longitude: 'No disponible' },
         // No guardamos la imagen completa, solo una referencia
         imageCapture: image ? true : false
       };
