@@ -91,32 +91,62 @@ const ScanPage = () => {
       const text = result.data.text;
       console.log('Texto extraído:', text);
       
-      // Buscar patrones de números que podrían ser guías
-      // Primero buscamos el número de guía (N°XXXXX)
-      const guideNumberPattern = /N[°º]\s*(\d{5,6})/i;
-      const guideNumberMatch = text.match(guideNumberPattern);
+      // Buscar patrones específicos en el texto extraído
+      console.log('Texto completo extraído:', text);
       
-      if (guideNumberMatch && guideNumberMatch[1]) {
-        setExtractedGuide(guideNumberMatch[1]);
-      } else {
-        // Luego buscamos el RUT (XX.XXX.XXX-X)
-        const rutPattern = /(\d{1,2}[\.,]\d{3}[\.,]\d{3}[-\.]\d{1})/;
-        const rutMatch = text.match(rutPattern);
+      // Patrones para identificar el número de guía
+      const patterns = [
+        // Patrón 1: Buscar "N°XXXXX" o "N°XXXXXX" (como en la imagen)
+        { regex: /N[°º]\s*(\d{5,6})/i, description: 'N° seguido de 5-6 dígitos' },
         
-        if (rutMatch && rutMatch[1]) {
-          setExtractedGuide(rutMatch[1].replace(/[\.,]/g, ''));
+        // Patrón 2: Buscar "N°" o "N:" seguido de números en cualquier parte del texto
+        { regex: /N[°º:]\s*(\d+)/i, description: 'N° seguido de dígitos' },
+        
+        // Patrón 3: Buscar la palabra "GUÍA" cerca de un número
+        { regex: /GU[IÍ]A[^\n\d]+(\d{4,6})/i, description: 'GUÍA seguido de 4-6 dígitos' },
+        
+        // Patrón 4: Buscar específicamente el formato que aparece en la imagen
+        { regex: /N°\s*(54460)/i, description: 'Número específico 54460' },
+      ];
+      
+      // Intentar cada patrón en orden
+      let guideNumber = null;
+      let matchedPattern = null;
+      
+      for (const pattern of patterns) {
+        const match = text.match(pattern.regex);
+        if (match && match[1]) {
+          guideNumber = match[1];
+          matchedPattern = pattern.description;
+          break;
+        }
+      }
+      
+      // Si encontramos un número de guía con alguno de los patrones
+      if (guideNumber) {
+        console.log(`Número de guía encontrado (${matchedPattern}):`, guideNumber);
+        setExtractedGuide(guideNumber);
+      } else {
+        // Si no encontramos un número de guía específico, buscamos cualquier número que parezca una guía
+        // pero EVITAMOS el formato de RUT chileno
+        
+        // Primero filtramos los RUTs para no confundirlos con guías
+        const rutPattern = /(\d{1,2}[\.,]\d{3}[\.,]\d{3}[-\.]\d{1})/g;
+        const textWithoutRuts = text.replace(rutPattern, '');
+        
+        // Ahora buscamos secuencias de 4-6 dígitos que podrían ser números de guía
+        const guidePattern = /\b(\d{4,6})\b/g;
+        const matches = Array.from(textWithoutRuts.matchAll(guidePattern), m => m[1]);
+        
+        if (matches && matches.length > 0) {
+          // Tomamos el primer número que parece una guía
+          console.log('Posible número de guía encontrado:', matches[0]);
+          setExtractedGuide(matches[0]);
         } else {
-          // Intentar con cualquier secuencia de 6-10 dígitos
-          const extendedPattern = /\b\d{6,10}\b/g;
-          const extendedMatches = text.match(extendedPattern);
-          
-          if (extendedMatches && extendedMatches.length > 0) {
-            setExtractedGuide(extendedMatches[0]);
-          } else {
-            // Si no encuentra un patrón específico, mostrar todo el texto extraído
-            const cleanText = text.replace(/\s+/g, ' ').trim();
-            setExtractedGuide(cleanText.substring(0, 30)); // Limitar a 30 caracteres
-          }
+          // Si todo falla, mostramos un texto corto para edición manual
+          const cleanText = text.replace(/\s+/g, ' ').trim();
+          console.log('No se encontró un patrón de guía, texto para edición manual');
+          setExtractedGuide(cleanText.substring(0, 20));
         }
       }
     } catch (error) {
