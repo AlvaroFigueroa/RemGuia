@@ -197,7 +197,7 @@ const LoginPage = () => {
                 
                 <Divider sx={{ my: 2 }}>o</Divider>
                 
-                <Button
+                {/* <Button
                   fullWidth
                   variant="outlined"
                   startIcon={<Google />}
@@ -205,7 +205,7 @@ const LoginPage = () => {
                   disabled={isLoading}
                 >
                   Continuar con Google
-                </Button>
+                </Button> */}
               </>
             )}
           </div>
