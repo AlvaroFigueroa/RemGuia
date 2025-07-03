@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import { 
   Visibility, VisibilityOff, Google, Login, PersonAdd 
-} from '@mui/icons-material';
+} from '../components/AppIcons';
 import { useFirebase } from '../context/FirebaseContext';
 import RegisterForm from '../components/RegisterForm';
 

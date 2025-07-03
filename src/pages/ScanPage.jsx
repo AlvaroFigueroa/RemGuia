@@ -4,7 +4,7 @@ import {
   TextField, CircularProgress, Alert, Stack, Snackbar,
   IconButton
 } from '@mui/material';
-import { CameraAlt, Save, FlipCameraIos, Refresh } from '@mui/icons-material';
+import { CameraAlt, Save, FlipCameraIos, Refresh } from '../components/AppIcons';
 import Webcam from 'react-webcam';
 // Importamos directamente Tesseract en lugar de solo createWorker
 import Tesseract from 'tesseract.js';

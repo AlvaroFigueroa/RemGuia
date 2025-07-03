@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BottomNavigation, BottomNavigationAction, Paper } from '@mui/material';
-import { QrCodeScanner, History, Settings } from '@mui/icons-material';
+import { QrCodeScanner, History, Settings } from './AppIcons';
 
 const Navigation = () => {
   const navigate = useNavigate();

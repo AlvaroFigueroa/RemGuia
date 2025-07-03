@@ -1,5 +1,5 @@
 import { Container, Typography, Box, Button, Paper } from '@mui/material';
-import { Home } from '@mui/icons-material';
+import { Home } from '../components/AppIcons';
 import { useNavigate } from 'react-router-dom';
 
 const NotFoundPage = () => {

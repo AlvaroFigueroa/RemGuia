@@ -5,7 +5,7 @@ import {
   IconButton, Chip, FormControl, InputLabel, Select, MenuItem,
   CircularProgress, Alert, Button, Tooltip
 } from '@mui/material';
-import { Search, CloudDone, CloudOff, Refresh, LocationOn } from '@mui/icons-material';
+import { Search, CloudDone, CloudOff, Refresh, LocationOn } from '../components/AppIcons';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useFirebase } from '../context/FirebaseContext';

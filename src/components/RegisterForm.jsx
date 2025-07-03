@@ -3,7 +3,7 @@ import {
   Box, Typography, TextField, Button, 
   InputAdornment, IconButton, Alert, CircularProgress 
 } from '@mui/material';
-import { Visibility, VisibilityOff, PersonAdd } from '@mui/icons-material';
+import { Visibility, VisibilityOff, PersonAdd } from './AppIcons';
 import { useFirebase } from '../context/FirebaseContext';
 
 const RegisterForm = ({ onToggleForm }) => {

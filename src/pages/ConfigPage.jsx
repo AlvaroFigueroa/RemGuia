@@ -9,7 +9,7 @@ import {
 import { 
   LocationOn, Storage, Sync, DeleteForever, 
   Logout, CloudSync, CloudOff 
-} from '@mui/icons-material';
+} from '../components/AppIcons';
 import { useFirebase } from '../context/FirebaseContext';
 
 const ConfigPage = () => {
