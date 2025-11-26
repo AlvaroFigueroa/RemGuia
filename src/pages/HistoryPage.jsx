@@ -267,11 +267,35 @@ const HistoryPage = () => {
                               Imagen capturada:
                             </Typography>
                             <Box
-                              component="img"
-                              src={record.imageData}
-                              alt={`Captura de ${record.guideNumber}`}
-                              sx={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 1, mt: 0.5 }}
-                            />
+                              sx={{
+                                mt: 0.5,
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                borderRadius: 1,
+                                p: 1,
+                                backgroundColor: 'grey.50',
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                maxHeight: 240,
+                                maxWidth: '100%',
+                                overflow: 'hidden'
+                              }}
+                            >
+                              <Box
+                                component="img"
+                                src={record.imageData}
+                                alt={`Captura de ${record.guideNumber}`}
+                                sx={{
+                                  maxWidth: '100%',
+                                  maxHeight: 220,
+                                  width: 'auto',
+                                  height: 'auto',
+                                  objectFit: 'contain',
+                                  display: 'block'
+                                }}
+                              />
+                            </Box>
                           </Box>
                         )}
                       </>
