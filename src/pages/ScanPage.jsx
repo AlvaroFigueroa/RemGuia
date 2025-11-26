@@ -28,7 +28,24 @@ const ScanPage = () => {
   const autoCaptureIntervalRef = useRef(null);
   const getInitialOnlineStatus = () => (typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
+  const [debugLogs, setDebugLogs] = useState([]);
+  const ocrProgressLogRef = useRef(0);
   const LAST_LOCATION_KEY = 'lastKnownLocation';
+
+  const appendDebugLog = useCallback((message) => {
+    setDebugLogs(prev => {
+      const entry = {
+        timestamp: new Date().toLocaleTimeString(),
+        message
+      };
+      return [entry, ...prev].slice(0, 40);
+    });
+  }, []);
+
+  const isMobileDevice = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  }, []);
 
   const getStoredLocation = useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -102,12 +119,17 @@ const ScanPage = () => {
   const processImage = useCallback(async (imageSrc) => {
     if (!imageSrc) {
       setError('No se pudo capturar la imagen');
+      appendDebugLog('OCR cancelado: imagen vacía');
       return null;
     }
 
     setIsProcessing(true);
     setError('');
     setOcrProgress(0);
+    ocrProgressLogRef.current = 0;
+    appendDebugLog('OCR iniciado');
+
+    const startTime = performance.now();
 
     try {
       const result = await Tesseract.recognize(
@@ -120,6 +142,11 @@ const ScanPage = () => {
           logger: progress => {
             if (progress.status === 'recognizing text') {
               setOcrProgress(parseInt(progress.progress * 100));
+              const percent = Math.round(progress.progress * 100);
+              if (percent - ocrProgressLogRef.current >= 25 || percent === 100) {
+                appendDebugLog(`OCR en progreso: ${percent}%`);
+                ocrProgressLogRef.current = percent;
+              }
             }
           }
         }
@@ -160,33 +187,51 @@ const ScanPage = () => {
         }
       }
 
+      if (guideNumber) {
+        appendDebugLog(`OCR detectó candidato: ${guideNumber}${confident ? ' (con prefijo N°)' : ''}`);
+      } else {
+        appendDebugLog('OCR sin coincidencias claras');
+      }
+
       return { guideNumber, confident, rawText: text };
     } catch (error) {
       console.error('Error al procesar la imagen:', error);
       setError('Error al procesar la imagen');
+      appendDebugLog(`OCR error: ${error.message || error}`);
       return null;
     } finally {
+      const elapsed = Math.round(performance.now() - startTime);
+      appendDebugLog(`OCR finalizado en ${elapsed} ms`);
       setIsProcessing(false);
     }
-  }, []);
+  }, [appendDebugLog, tesseractPaths]);
 
   const captureImage = useCallback(async ({ fromAuto = false } = {}) => {
     if (isProcessing) return;
 
     if (webcamRef.current) {
       if (fromAuto) {
-        console.log('[AutoScan] Captura automática disparada');
+        appendDebugLog('Captura automática disparada');
       }
       const imageSrc = webcamRef.current.getScreenshot();
 
       if (!imageSrc) {
         setError('No se pudo capturar la imagen');
+        appendDebugLog('Error: getScreenshot() devolvió null');
         return;
       }
 
-      const detection = await processImage(imageSrc);
+      appendDebugLog(`Imagen capturada (${Math.round(imageSrc.length / 1024)} KB aprox.)`);
+
+      let detection = null;
+      try {
+        detection = await processImage(imageSrc);
+      } catch (ocrError) {
+        appendDebugLog(`OCR falló: ${ocrError.message || ocrError}`);
+      }
+
       if (fromAuto) {
-        console.log('[AutoScan] Texto OCR:', detection?.rawText || '(sin texto)');
+        appendDebugLog(`Texto OCR: ${detection?.rawText?.slice(0, 160) || '(sin texto)'}`);
       }
 
       if (!fromAuto) {
@@ -194,17 +239,20 @@ const ScanPage = () => {
         setError('');
         if (detection?.guideNumber) {
           setExtractedGuide(detection.guideNumber);
+          appendDebugLog(`Número asignado manualmente: ${detection.guideNumber}`);
         }
       } else if (detection?.confident) {
         setImage(imageSrc);
         setExtractedGuide(detection.guideNumber);
         setAutoCaptureEnabled(false);
         setSuccess('Número de guía detectado automáticamente');
+        appendDebugLog(`Autoescaneo exitoso: ${detection.guideNumber}`);
       }
     } else {
       setError('No se pudo acceder a la cámara');
+      appendDebugLog('Error: webcamRef no disponible');
     }
-  }, [isProcessing, processImage]);
+  }, [appendDebugLog, isProcessing, processImage]);
 
   const flipCamera = useCallback(() => {
     setFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user');
@@ -363,11 +411,13 @@ const ScanPage = () => {
   };
 
   // Configuración de la cámara web
-  const videoConstraints = {
-    facingMode: facingMode,
-    width: { ideal: 1280 },
-    height: { ideal: 720 }
-  };
+  const videoConstraints = useMemo(() => ({
+    facingMode,
+    width: { ideal: isMobileDevice ? 720 : 1280 },
+    height: { ideal: isMobileDevice ? 480 : 720 }
+  }), [facingMode, isMobileDevice]);
+
+  const screenshotQuality = isMobileDevice ? 0.7 : 0.92;
 
   return (
     <Container maxWidth="sm" sx={{ pt: 2, pb: 8 }}>
@@ -393,6 +443,7 @@ const ScanPage = () => {
                 audio={false}
                 ref={webcamRef}
                 screenshotFormat="image/jpeg"
+                screenshotQuality={screenshotQuality}
                 videoConstraints={videoConstraints}
                 style={{ width: '100%', height: 'auto' }}
               />
@@ -473,6 +524,36 @@ const ScanPage = () => {
           {isLoading ? <CircularProgress size={24} /> : 'Guardar Registro'}
         </Button>
       </Paper>
+
+      {debugLogs.length > 0 && (
+        <Paper elevation={1} sx={{ p: 2, mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Typography variant="subtitle1">
+              Registro reciente
+            </Typography>
+            <Button size="small" onClick={() => setDebugLogs([])}>
+              Limpiar
+            </Button>
+          </Box>
+          <Box
+            sx={{
+              maxHeight: 200,
+              overflowY: 'auto',
+              fontFamily: 'monospace',
+              fontSize: '0.85rem',
+              backgroundColor: '#f5f5f5',
+              borderRadius: 1,
+              p: 1
+            }}
+          >
+            {debugLogs.map((log, index) => (
+              <Typography key={`${log.timestamp}-${index}`} component="p" sx={{ mb: 0.5 }}>
+                [{log.timestamp}] {log.message}
+              </Typography>
+            ))}
+          </Box>
+        </Paper>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
