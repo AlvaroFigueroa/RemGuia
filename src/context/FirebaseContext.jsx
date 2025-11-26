@@ -151,17 +151,21 @@ export const FirebaseProvider = ({ children }) => {
             pdfUrl = await uploadPDF(record.file, record.guideNumber);
           }
 
-          // Guardar el registro en Firestore
+          // Guardar el registro en Firestore (sin campos undefined)
           const recordToSave = {
             ...record,
             userId,
-            pdfUrl,
             createdAt: record.date ? new Date(record.date) : new Date(),
             updatedAt: serverTimestamp(),
-            synced: true
+            synced: true,
+            ...(pdfUrl ? { pdfUrl } : {})
           };
 
-          delete recordToSave.file; // Eliminar el archivo del objeto antes de guardar
+          delete recordToSave.file; // Eliminar el archivo binario
+          delete recordToSave.imageData; // No subir la imagen en base64 durante la sincronización
+          if (recordToSave.pdfUrl === undefined) {
+            delete recordToSave.pdfUrl;
+          }
 
           const docRef = await addDoc(collection(db, 'guideRecords'), recordToSave);
           return { id: docRef.id, ...recordToSave };
