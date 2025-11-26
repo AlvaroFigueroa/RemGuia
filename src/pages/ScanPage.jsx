@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Container, Typography, Box, Button, Paper, 
   TextField, CircularProgress, Alert, Stack,
@@ -24,6 +24,15 @@ const ScanPage = () => {
   const [ocrProgress, setOcrProgress] = useState(0);
   const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(true);
   const autoCaptureIntervalRef = useRef(null);
+  const getInitialOnlineStatus = () => (typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
+  const basePath = import.meta.env.BASE_URL ?? '/';
+  const normalizedBasePath = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
+  const tesseractPaths = useMemo(() => ({
+    workerPath: `${normalizedBasePath}/ocr/worker.min.js`,
+    corePath: `${normalizedBasePath}/ocr/tesseract-core-simd.wasm.js`,
+    langPath: `${normalizedBasePath}/ocr/lang-data`
+  }), [normalizedBasePath]);
   
   // No necesitamos mantener una referencia al worker
   // Usaremos Tesseract.recognize directamente
@@ -46,6 +55,21 @@ const ScanPage = () => {
     return () => {
       // No hay worker que terminar
     };
+  }, [tesseractPaths]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const processImage = useCallback(async (imageSrc) => {
@@ -63,6 +87,9 @@ const ScanPage = () => {
         imageSrc,
         'eng',
         {
+          workerPath: tesseractPaths.workerPath,
+          corePath: tesseractPaths.corePath,
+          langPath: tesseractPaths.langPath,
           logger: progress => {
             if (progress.status === 'recognizing text') {
               setOcrProgress(parseInt(progress.progress * 100));
@@ -248,8 +275,11 @@ const ScanPage = () => {
     }
 
     try {
+      const localId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
       // Crear objeto de registro
       const record = {
+        localId,
         guideNumber: extractedGuide,
         date: new Date().toISOString(),
         location: currentLocation || { latitude: 'No disponible', longitude: 'No disponible' },
@@ -279,6 +309,7 @@ const ScanPage = () => {
       const records = JSON.parse(localStorage.getItem('guideRecords') || '[]');
       records.push(record);
       localStorage.setItem('guideRecords', JSON.stringify(records));
+      window.dispatchEvent(new CustomEvent('guideRecordsUpdated'));
 
       setSuccess('Registro guardado correctamente' + (record.synced ? ' y sincronizado' : ' (pendiente de sincronizar)'));
       
@@ -382,7 +413,7 @@ const ScanPage = () => {
           </Box>
         )}
 
-        {extractedGuide && (
+        {(image || extractedGuide) && (
           <Box sx={{ mb: 2 }}>
             <TextField
               label="Número de Guía"
@@ -390,7 +421,7 @@ const ScanPage = () => {
               fullWidth
               value={extractedGuide}
               onChange={(e) => setExtractedGuide(e.target.value)}
-              helperText="Puedes editar el número si la extracción no fue correcta"
+              helperText="Puedes ingresar o editar el número manualmente"
             />
           </Box>
         )}

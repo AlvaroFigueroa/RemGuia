@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Container, Typography, Box, Paper, List, ListItem, 
   ListItemText, ListItemIcon, Switch, Button, Divider, Dialog,
@@ -28,12 +27,20 @@ const ConfigPage = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
-  // Verificar registros pendientes de sincronización
-  useEffect(() => {
+  const updatePendingRecords = useCallback(() => {
     const records = JSON.parse(localStorage.getItem('guideRecords') || '[]');
     const pending = records.filter(record => !record.synced).length;
     setSyncStatus(prev => ({ ...prev, pendingRecords: pending }));
   }, []);
+
+  useEffect(() => {
+    updatePendingRecords();
+  }, [updatePendingRecords]);
+
+  useEffect(() => {
+    window.addEventListener('guideRecordsUpdated', updatePendingRecords);
+    return () => window.removeEventListener('guideRecordsUpdated', updatePendingRecords);
+  }, [updatePendingRecords]);
 
   // Guardar preferencias en localStorage
   useEffect(() => {
@@ -85,52 +92,69 @@ const ConfigPage = () => {
     }
   };
 
-  const handleSyncData = async () => {
-    setIsSyncing(true);
-    
-    try {
-      // Recuperar registros pendientes de sincronizar
-      const records = JSON.parse(localStorage.getItem('guideRecords') || '[]');
-      const pendingRecords = records.filter(record => !record.synced);
-      
-      if (pendingRecords.length === 0) {
-        setSnackbarMessage('No hay registros pendientes para sincronizar');
+  const syncPendingRecords = useCallback(async ({ silent = false } = {}) => {
+    if (isSyncing) return;
+
+    const notify = (message) => {
+      if (!silent) {
+        setSnackbarMessage(message);
         setSnackbarOpen(true);
-        setIsSyncing(false);
-        return;
       }
-      
-      // Sincronizar con Firebase
+    };
+
+    if (!navigator.onLine) {
+      notify('Sin conexión a internet. Inténtalo nuevamente cuando tengas señal.');
+      return;
+    }
+
+    if (!currentUser) {
+      notify('Debes iniciar sesión para sincronizar tus registros.');
+      return;
+    }
+
+    const records = JSON.parse(localStorage.getItem('guideRecords') || '[]');
+    const pendingRecords = records.filter(record => !record.synced);
+
+    if (pendingRecords.length === 0) {
+      notify('No hay registros pendientes para sincronizar');
+      return;
+    }
+
+    setIsSyncing(true);
+
+    try {
       const result = await syncLocalRecords(pendingRecords);
-      
+
       if (result.success) {
-        // Marcar como sincronizados en localStorage
-        const updatedRecords = records.map(record => ({ ...record, synced: true }));
+        const syncedRecords = result.records || [];
+        const syncedIds = new Set(syncedRecords.map(record => record.localId));
+        const updatedRecords = records.map(record =>
+          syncedIds.has(record.localId) ? { ...record, synced: true } : record
+        );
+
         localStorage.setItem('guideRecords', JSON.stringify(updatedRecords));
-        
-        // Actualizar estadísticas
+        const nowISO = new Date().toISOString();
+        localStorage.setItem('lastSync', nowISO);
+
+        const remainingPending = updatedRecords.filter(record => !record.synced).length;
         setSyncStatus({
-          lastSync: new Date().toISOString(),
-          pendingRecords: 0
+          lastSync: nowISO,
+          pendingRecords: remainingPending
         });
-        localStorage.setItem('lastSync', new Date().toISOString());
-        
-        // Mostrar mensaje de éxito
-        setSnackbarMessage(result.message);
+
+        window.dispatchEvent(new CustomEvent('guideRecordsUpdated'));
+
+        notify(result.message || 'Registros sincronizados correctamente');
       } else {
-        // Mostrar mensaje de error
-        setSnackbarMessage('Error al sincronizar: ' + (result.message || 'Intente nuevamente'));
+        notify(result.message || 'Error al sincronizar. Intenta nuevamente.');
       }
-      
-      setSnackbarOpen(true);
     } catch (error) {
       console.error('Error al sincronizar datos:', error);
-      setSnackbarMessage('Error al sincronizar datos: ' + error.message);
-      setSnackbarOpen(true);
+      notify('Error al sincronizar datos: ' + error.message);
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [currentUser, isSyncing, syncLocalRecords]);
 
   const handleConfirmDialog = () => {
     switch (dialogType) {
@@ -143,13 +167,24 @@ const ConfigPage = () => {
         setSyncStatus(prev => ({ ...prev, pendingRecords: 0 }));
         break;
       case 'sync':
-        handleSyncData();
+        syncPendingRecords();
         break;
       default:
         break;
     }
     setOpenDialog(false);
   };
+
+  useEffect(() => {
+    if (!autoSync) return;
+
+    const handleOnline = () => {
+      syncPendingRecords({ silent: true });
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [autoSync, syncPendingRecords]);
 
   // Formatear fecha de última sincronización
   const formatLastSync = () => {
@@ -240,28 +275,6 @@ const ConfigPage = () => {
             {syncStatus.pendingRecords} registro(s) pendiente(s) de sincronizar
           </Typography>
         </Box>
-        
-        <Typography variant="body2" color="text.secondary" gutterBottom>
-          Última sincronización: {formatLastSync()}
-        </Typography>
-        
-        <Button 
-          variant="outlined" 
-          startIcon={<Sync />}
-          fullWidth
-          sx={{ mt: 1 }}
-          onClick={() => handleOpenDialog('sync')}
-          disabled={syncStatus.pendingRecords === 0}
-        >
-          Sincronizar ahora
-        </Button>
-      </Paper>
-      
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Cuenta y datos
-        </Typography>
-        
         <Button 
           variant="outlined" 
           color="error"

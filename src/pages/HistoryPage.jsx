@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Container, Typography, Box, Paper, List, ListItem, 
   ListItemText, Divider, TextField, InputAdornment,
@@ -18,18 +18,43 @@ const HistoryPage = () => {
   const [dateFilter, setDateFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const getInitialOnlineStatus = () => (typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const loadLocalRecords = useCallback((message) => {
+    const loadedRecords = JSON.parse(localStorage.getItem('guideRecords') || '[]');
+    loadedRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+    setRecords(loadedRecords);
+    setFilteredRecords(loadedRecords);
+    if (message) {
+      setError(message);
+    }
+  }, []);
 
   // Cargar registros
   useEffect(() => {
     if (!currentUser) {
-      setRecords([]);
-      setFilteredRecords([]);
-      setError('Debes iniciar sesión para ver tus registros.');
+      loadLocalRecords('Debes iniciar sesión para ver tus registros en la nube. Mostrando datos locales.');
       return;
     }
 
     loadRecords();
-  }, [currentUser]);
+  }, [currentUser, isOnline, loadLocalRecords]);
   
   // Función para cargar registros desde la fuente seleccionada
   const loadRecords = async () => {
@@ -41,12 +66,17 @@ const HistoryPage = () => {
         throw new Error('Usuario no autenticado');
       }
 
+      if (!isOnline) {
+        loadLocalRecords('Sin conexión a internet. Mostrando registros locales.');
+        return;
+      }
+
       const firebaseRecords = await getGuideRecords();
       setRecords(firebaseRecords);
       setFilteredRecords(firebaseRecords);
     } catch (error) {
       console.error('Error al cargar registros:', error);
-      setError('Error al cargar registros: ' + error.message);
+      loadLocalRecords('No se pudo cargar desde Firestore: ' + error.message + '. Mostrando registros locales.');
     } finally {
       setIsLoading(false);
     }
@@ -170,7 +200,7 @@ const HistoryPage = () => {
         </Box>
         
         <Typography variant="subtitle1" gutterBottom>
-          {filteredRecords.length} registro(s) encontrado(s) en Firestore
+          {filteredRecords.length} registro(s) encontrado(s) {(!currentUser || !isOnline) ? 'localmente' : 'en Firestore'}
         </Typography>
         
         {isLoading ? (
