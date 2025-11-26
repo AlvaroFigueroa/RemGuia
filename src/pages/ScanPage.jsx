@@ -30,6 +30,9 @@ const ScanPage = () => {
   const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
   const [debugLogs, setDebugLogs] = useState([]);
   const ocrProgressLogRef = useRef(0);
+  const processingFrameRef = useRef(false);
+  const pendingFrameRef = useRef(null);
+  const pendingFrameFromAutoRef = useRef(false);
   const LAST_LOCATION_KEY = 'lastKnownLocation';
 
   const appendDebugLog = useCallback((message) => {
@@ -72,15 +75,25 @@ const ScanPage = () => {
 
   const basePath = import.meta.env.BASE_URL ?? '/';
   const normalizedBasePath = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
-  const supportsSimd = typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : false;
-  const tesseractPaths = useMemo(() => ({
-    workerPath: `${normalizedBasePath}/ocr/worker.min.js`,
-    corePath: supportsSimd
-      ? `${normalizedBasePath}/ocr/tesseract-core-simd.wasm.js`
-      : `${normalizedBasePath}/ocr/tesseract-core.wasm.js`,
-    langPath: `${normalizedBasePath}/ocr/lang-data`,
-    usingSimd: supportsSimd
-  }), [normalizedBasePath, supportsSimd]);
+  
+  // En móviles con conexión usamos CDN (más confiable), offline usamos archivos locales
+  const tesseractConfig = useMemo(() => {
+    const useLocalFiles = !isOnline || !isMobileDevice;
+    
+    if (useLocalFiles) {
+      return {
+        workerPath: `${normalizedBasePath}/ocr/worker.min.js`,
+        corePath: `${normalizedBasePath}/ocr/tesseract-core.wasm.js`,
+        langPath: `${normalizedBasePath}/ocr/lang-data`,
+        mode: 'local'
+      };
+    }
+    
+    // CDN para móviles con conexión (más estable)
+    return {
+      mode: 'cdn'
+    };
+  }, [normalizedBasePath, isOnline, isMobileDevice]);
   
   // No necesitamos mantener una referencia al worker
   // Usaremos Tesseract.recognize directamente
@@ -103,14 +116,14 @@ const ScanPage = () => {
     return () => {
       // No hay worker que terminar
     };
-  }, [tesseractPaths]);
+  }, [tesseractConfig]);
 
   useEffect(() => {
-    appendDebugLog(tesseractPaths.usingSimd
-      ? 'OCR usando núcleo SIMD (requiere aislamiento)'
-      : 'OCR usando núcleo estándar (compatible con móviles)'
+    appendDebugLog(tesseractConfig.mode === 'cdn'
+      ? 'OCR usando CDN (móvil con conexión)'
+      : 'OCR usando archivos locales'
     );
-  }, [appendDebugLog, tesseractPaths]);
+  }, [appendDebugLog, tesseractConfig]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -142,37 +155,37 @@ const ScanPage = () => {
 
     const startTime = performance.now();
 
-    const recognitionPromise = Tesseract.recognize(
-        imageSrc,
-        'eng',
-        {
-          workerPath: tesseractPaths.workerPath,
-          corePath: tesseractPaths.corePath,
-          langPath: tesseractPaths.langPath,
-          logger: progress => {
-            if (progress.status === 'recognizing text') {
-              setOcrProgress(parseInt(progress.progress * 100));
-              const percent = Math.round(progress.progress * 100);
-              if (percent - ocrProgressLogRef.current >= 25 || percent === 100) {
-                appendDebugLog(`OCR en progreso: ${percent}%`);
-                ocrProgressLogRef.current = percent;
+    try {
+      const ocrOptions = tesseractConfig.mode === 'cdn'
+        ? {
+            logger: progress => {
+              if (progress.status === 'recognizing text') {
+                setOcrProgress(parseInt(progress.progress * 100));
+                const percent = Math.round(progress.progress * 100);
+                if (percent - ocrProgressLogRef.current >= 25 || percent === 100) {
+                  appendDebugLog(`OCR en progreso: ${percent}%`);
+                  ocrProgressLogRef.current = percent;
+                }
               }
             }
           }
-        }
-      );
+        : {
+            workerPath: tesseractConfig.workerPath,
+            corePath: tesseractConfig.corePath,
+            langPath: tesseractConfig.langPath,
+            logger: progress => {
+              if (progress.status === 'recognizing text') {
+                setOcrProgress(parseInt(progress.progress * 100));
+                const percent = Math.round(progress.progress * 100);
+                if (percent - ocrProgressLogRef.current >= 25 || percent === 100) {
+                  appendDebugLog(`OCR en progreso: ${percent}%`);
+                  ocrProgressLogRef.current = percent;
+                }
+              }
+            }
+          };
 
-    recognitionPromise.catch(error => {
-      console.warn('OCR async result después del timeout:', error);
-    });
-
-    const timeoutMs = isMobileDevice ? 8000 : 15000;
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('OCR_TIMEOUT')), timeoutMs);
-    });
-
-    try {
-      const result = await Promise.race([recognitionPromise, timeoutPromise]);
+      const result = await Tesseract.recognize(imageSrc, 'eng', ocrOptions);
 
       const text = result.data.text;
 
@@ -218,43 +231,20 @@ const ScanPage = () => {
       return { guideNumber, confident, rawText: text };
     } catch (error) {
       console.error('Error al procesar la imagen:', error);
-      if (error?.message === 'OCR_TIMEOUT') {
-        appendDebugLog(`OCR cancelado por tardar más de ${isMobileDevice ? 8 : 15} segundos`);
-      } else {
-        setError('Error al procesar la imagen');
-        appendDebugLog(`OCR error: ${error.message || error}`);
-      }
+      setError('Error al procesar la imagen');
+      appendDebugLog(`OCR error: ${error.message || error}`);
       return null;
     } finally {
       const elapsed = Math.round(performance.now() - startTime);
       appendDebugLog(`OCR finalizado en ${elapsed} ms`);
       setIsProcessing(false);
     }
-  }, [appendDebugLog, isMobileDevice, tesseractPaths]);
+  }, [appendDebugLog, tesseractConfig]);
 
-  const captureImage = useCallback(async ({ fromAuto = false } = {}) => {
-    if (isProcessing) return;
-
-    if (webcamRef.current) {
-      if (fromAuto) {
-        appendDebugLog('Captura automática disparada');
-      }
-      const imageSrc = webcamRef.current.getScreenshot();
-
-      if (!imageSrc) {
-        setError('No se pudo capturar la imagen');
-        appendDebugLog('Error: getScreenshot() devolvió null');
-        return;
-      }
-
-      appendDebugLog(`Imagen capturada (${Math.round(imageSrc.length / 1024)} KB aprox.)`);
-
-      let detection = null;
-      try {
-        detection = await processImage(imageSrc);
-      } catch (ocrError) {
-        appendDebugLog(`OCR falló: ${ocrError.message || ocrError}`);
-      }
+  const processCapturedFrame = useCallback(async (imageSrc, fromAuto) => {
+    processingFrameRef.current = true;
+    try {
+      const detection = await processImage(imageSrc);
 
       if (fromAuto) {
         appendDebugLog(`Texto OCR: ${detection?.rawText?.slice(0, 160) || '(sin texto)'}`);
@@ -274,11 +264,49 @@ const ScanPage = () => {
         setSuccess('Número de guía detectado automáticamente');
         appendDebugLog(`Autoescaneo exitoso: ${detection.guideNumber}`);
       }
+    } catch (ocrError) {
+      appendDebugLog(`OCR falló: ${ocrError.message || ocrError}`);
+    } finally {
+      processingFrameRef.current = false;
+
+      if (pendingFrameRef.current) {
+        const nextImage = pendingFrameRef.current;
+        const nextFromAuto = pendingFrameFromAutoRef.current;
+        pendingFrameRef.current = null;
+        pendingFrameFromAutoRef.current = false;
+        setTimeout(() => processCapturedFrame(nextImage, nextFromAuto), 0);
+      }
+    }
+  }, [appendDebugLog, processImage]);
+
+  const captureImage = useCallback(async ({ fromAuto = false } = {}) => {
+    if (webcamRef.current) {
+      if (fromAuto) {
+        appendDebugLog('Captura automática disparada');
+      }
+      const imageSrc = webcamRef.current.getScreenshot();
+
+      if (!imageSrc) {
+        setError('No se pudo capturar la imagen');
+        appendDebugLog('Error: getScreenshot() devolvió null');
+        return;
+      }
+
+      appendDebugLog(`Imagen capturada (${Math.round(imageSrc.length / 1024)} KB aprox.)`);
+
+      if (processingFrameRef.current) {
+        pendingFrameRef.current = imageSrc;
+        pendingFrameFromAutoRef.current = fromAuto;
+        appendDebugLog('OCR ocupado: se reemplazó el fotograma pendiente');
+        return;
+      }
+
+      processCapturedFrame(imageSrc, fromAuto);
     } else {
       setError('No se pudo acceder a la cámara');
       appendDebugLog('Error: webcamRef no disponible');
     }
-  }, [appendDebugLog, isProcessing, processImage]);
+  }, [appendDebugLog, processCapturedFrame]);
 
   const flipCamera = useCallback(() => {
     setFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user');
@@ -295,7 +323,7 @@ const ScanPage = () => {
     }
 
     autoCaptureIntervalRef.current = setInterval(() => {
-      if (!isProcessing && !extractedGuide) {
+      if (!extractedGuide) {
         captureImage({ fromAuto: true });
       }
     }, 1000);
@@ -437,13 +465,17 @@ const ScanPage = () => {
   };
 
   // Configuración de la cámara web
+  useEffect(() => {
+    appendDebugLog(`Cámara activa: ${facingMode === 'user' ? 'frontal' : 'trasera'}`);
+  }, [appendDebugLog, facingMode]);
+
   const videoConstraints = useMemo(() => ({
     facingMode,
-    width: { ideal: isMobileDevice ? 720 : 1280 },
-    height: { ideal: isMobileDevice ? 480 : 720 }
-  }), [facingMode, isMobileDevice]);
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+  }), [facingMode]);
 
-  const screenshotQuality = isMobileDevice ? 0.7 : 0.92;
+  const screenshotQuality = 0.98;
 
   return (
     <Container maxWidth="sm" sx={{ pt: 2, pb: 8 }}>
