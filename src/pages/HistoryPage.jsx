@@ -203,8 +203,8 @@ const HistoryPage = () => {
                           {formatDate(record.date)}
                         </Typography>
                         {record.location && (
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography component="p" variant="body2" sx={{ flex: 1 }}>
+                          <Box component="span" display="flex" alignItems="center" gap={1}>
+                            <Typography component="span" variant="body2" sx={{ flex: 1 }}>
                               {record.location.latitude !== 'No disponible' 
                                 ? `Ubicación registrada`
                                 : 'Ubicación no disponible'
@@ -227,7 +227,7 @@ const HistoryPage = () => {
                           </Box>
                         )}
                         {record.fileName && (
-                          <Typography component="p" variant="body2">
+                          <Typography component="span" variant="body2">
                             Archivo: {record.fileName}
                           </Typography>
                         )}
