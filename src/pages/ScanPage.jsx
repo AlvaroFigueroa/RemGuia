@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Container, Typography, Box, Button, Paper, 
-  TextField, CircularProgress, Alert, Stack, Snackbar,
-  IconButton
+  TextField, CircularProgress, Alert, Stack,
+  IconButton, FormControlLabel, Switch
 } from '@mui/material';
 import { CameraAlt, Save, FlipCameraIos, Refresh } from '../components/AppIcons';
 import Webcam from 'react-webcam';
@@ -22,6 +22,8 @@ const ScanPage = () => {
   const [facingMode, setFacingMode] = useState('environment'); // 'user' para cámara frontal, 'environment' para trasera
   const webcamRef = useRef(null);
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(false);
+  const autoCaptureIntervalRef = useRef(null);
   
   // No necesitamos mantener una referencia al worker
   // Usaremos Tesseract.recognize directamente
@@ -46,39 +48,20 @@ const ScanPage = () => {
     };
   }, []);
 
-  // Función para capturar imagen desde la cámara
-  const captureImage = () => {
-    if (webcamRef.current) {
-      const imageSrc = webcamRef.current.getScreenshot();
-      setImage(imageSrc);
-      setError('');
-      processImage(imageSrc);
-    } else {
-      setError('No se pudo acceder a la cámara');
-    }
-  };
-  
-  // Función para cambiar entre cámara frontal y trasera
-  const flipCamera = () => {
-    setFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user');
-  };
-  
-  // Función para procesar la imagen y extraer texto
-  const processImage = async (imageSrc) => {
+  const processImage = useCallback(async (imageSrc) => {
     if (!imageSrc) {
       setError('No se pudo capturar la imagen');
-      return;
+      return null;
     }
-    
+
     setIsProcessing(true);
     setError('');
     setOcrProgress(0);
-    
+
     try {
-      // Usar Tesseract.recognize directamente sin worker
       const result = await Tesseract.recognize(
         imageSrc,
-        'eng', // idioma
+        'eng',
         {
           logger: progress => {
             if (progress.status === 'recognizing text') {
@@ -87,75 +70,115 @@ const ScanPage = () => {
           }
         }
       );
-      
+
       const text = result.data.text;
-      console.log('Texto extraído:', text);
-      
-      // Buscar patrones específicos en el texto extraído
-      console.log('Texto completo extraído:', text);
-      
-      // Patrones para identificar el número de guía
+
       const patterns = [
-        // Patrón 1: Buscar "N°XXXXX" o "N°XXXXXX" (como en la imagen)
-        { regex: /N[°º]\s*(\d{5,6})/i, description: 'N° seguido de 5-6 dígitos' },
-        
-        // Patrón 2: Buscar "N°" o "N:" seguido de números en cualquier parte del texto
-        { regex: /N[°º:]\s*(\d+)/i, description: 'N° seguido de dígitos' },
-        
-        // Patrón 3: Buscar la palabra "GUÍA" cerca de un número
-        { regex: /GU[IÍ]A[^\n\d]+(\d{4,6})/i, description: 'GUÍA seguido de 4-6 dígitos' },
-        
-        // Patrón 4: Buscar específicamente el formato que aparece en la imagen
-        { regex: /N°\s*(54460)/i, description: 'Número específico 54460' },
+        { regex: /N[°º]\s*(\d{4,8})/i, description: 'N° seguido de 4-8 dígitos', requiresPrefix: true },
+        { regex: /N[°º:]\s*(\d{4,8})/i, description: 'Variación N°/N: seguido de dígitos', requiresPrefix: true },
+        { regex: /GU[IÍ]A[^\n\d]+(\d{4,6})/i, description: 'GUÍA seguido de 4-6 dígitos', requiresPrefix: false },
+        { regex: /GU[IÍ]A[\s\w]*N[°º]?\s*(\d{4,8})/i, description: 'Texto GUÍA con N° cercano', requiresPrefix: false }
       ];
-      
-      // Intentar cada patrón en orden
+
       let guideNumber = null;
-      let matchedPattern = null;
-      
+      let confident = false;
+
       for (const pattern of patterns) {
         const match = text.match(pattern.regex);
         if (match && match[1]) {
           guideNumber = match[1];
-          matchedPattern = pattern.description;
+          confident = Boolean(pattern.requiresPrefix);
           break;
         }
       }
-      
-      // Si encontramos un número de guía con alguno de los patrones
-      if (guideNumber) {
-        console.log(`Número de guía encontrado (${matchedPattern}):`, guideNumber);
-        setExtractedGuide(guideNumber);
-      } else {
-        // Si no encontramos un número de guía específico, buscamos cualquier número que parezca una guía
-        // pero EVITAMOS el formato de RUT chileno
-        
-        // Primero filtramos los RUTs para no confundirlos con guías
+
+      if (!guideNumber) {
         const rutPattern = /(\d{1,2}[\.,]\d{3}[\.,]\d{3}[-\.]\d{1})/g;
         const textWithoutRuts = text.replace(rutPattern, '');
-        
-        // Ahora buscamos secuencias de 4-6 dígitos que podrían ser números de guía
         const guidePattern = /\b(\d{4,6})\b/g;
         const matches = Array.from(textWithoutRuts.matchAll(guidePattern), m => m[1]);
-        
+
         if (matches && matches.length > 0) {
-          // Tomamos el primer número que parece una guía
-          console.log('Posible número de guía encontrado:', matches[0]);
-          setExtractedGuide(matches[0]);
+          guideNumber = matches[0];
         } else {
-          // Si todo falla, mostramos un texto corto para edición manual
           const cleanText = text.replace(/\s+/g, ' ').trim();
-          console.log('No se encontró un patrón de guía, texto para edición manual');
-          setExtractedGuide(cleanText.substring(0, 20));
+          guideNumber = cleanText.substring(0, 20);
         }
       }
+
+      return { guideNumber, confident, rawText: text };
     } catch (error) {
       console.error('Error al procesar la imagen:', error);
       setError('Error al procesar la imagen');
+      return null;
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, []);
+
+  const captureImage = useCallback(async ({ fromAuto = false } = {}) => {
+    if (isProcessing) return;
+
+    if (webcamRef.current) {
+      if (fromAuto) {
+        console.log('[AutoScan] Captura automática disparada');
+      }
+      const imageSrc = webcamRef.current.getScreenshot();
+
+      if (!imageSrc) {
+        setError('No se pudo capturar la imagen');
+        return;
+      }
+
+      const detection = await processImage(imageSrc);
+      if (fromAuto) {
+        console.log('[AutoScan] Texto OCR:', detection?.rawText || '(sin texto)');
+      }
+
+      if (!fromAuto) {
+        setImage(imageSrc);
+        setError('');
+        if (detection?.guideNumber) {
+          setExtractedGuide(detection.guideNumber);
+        }
+      } else if (detection?.confident) {
+        setImage(imageSrc);
+        setExtractedGuide(detection.guideNumber);
+        setAutoCaptureEnabled(false);
+        setSuccess('Número de guía detectado automáticamente');
+      }
+    } else {
+      setError('No se pudo acceder a la cámara');
+    }
+  }, [isProcessing, processImage]);
+
+  const flipCamera = useCallback(() => {
+    setFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user');
+  }, []);
+
+  // Función para procesar la imagen y extraer texto
+  useEffect(() => {
+    if (!autoCaptureEnabled) {
+      if (autoCaptureIntervalRef.current) {
+        clearInterval(autoCaptureIntervalRef.current);
+        autoCaptureIntervalRef.current = null;
+      }
+      return;
+    }
+
+    autoCaptureIntervalRef.current = setInterval(() => {
+      if (!isProcessing && !extractedGuide) {
+        captureImage({ fromAuto: true });
+      }
+    }, 1500);
+
+    return () => {
+      if (autoCaptureIntervalRef.current) {
+        clearInterval(autoCaptureIntervalRef.current);
+        autoCaptureIntervalRef.current = null;
+      }
+    };
+  }, [autoCaptureEnabled, isProcessing, extractedGuide, captureImage]);
   
   // Función para reiniciar el proceso de escaneo
   const resetScan = () => {
@@ -284,6 +307,34 @@ const ScanPage = () => {
       </Typography>
       
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                color="primary"
+                checked={autoCaptureEnabled}
+                onChange={(e) => {
+                  setAutoCaptureEnabled(e.target.checked);
+                  if (!e.target.checked) {
+                    setOcrProgress(0);
+                  } else {
+                    setError('');
+                    setSuccess('');
+                    setImage(null);
+                    setExtractedGuide('');
+                  }
+                }}
+              />
+            }
+            label="Escaneo automático"
+          />
+          {autoCaptureEnabled && (
+            <Typography variant="body2" color="text.secondary">
+              Capturaremos la foto al detectar la guía
+            </Typography>
+          )}
+        </Box>
+
         {!image ? (
           // Mostrar cámara si no hay imagen capturada
           <Box sx={{ mb: 2, position: 'relative' }}>
@@ -302,8 +353,8 @@ const ScanPage = () => {
                 variant="contained"
                 color="primary"
                 startIcon={<CameraAlt />}
-                onClick={captureImage}
-                disabled={isProcessing}
+                onClick={() => captureImage()}
+                disabled={isProcessing || autoCaptureEnabled}
               >
                 Capturar
               </Button>
