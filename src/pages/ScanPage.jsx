@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Container, Typography, Box, Button, Paper, 
   TextField, CircularProgress, Alert, Stack,
-  IconButton
+  IconButton, Dialog, DialogTitle, DialogContent,
+  DialogContentText, DialogActions
 } from '@mui/material';
 import { CameraAlt, Save, FlipCameraIos, Refresh } from '../components/AppIcons';
 import Webcam from 'react-webcam';
@@ -18,6 +19,7 @@ const ScanPage = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [location, setLocation] = useState(null);
   const [facingMode, setFacingMode] = useState('environment'); // 'user' para cámara frontal, 'environment' para trasera
   const webcamRef = useRef(null);
@@ -312,12 +314,8 @@ const ScanPage = () => {
       window.dispatchEvent(new CustomEvent('guideRecordsUpdated'));
 
       setSuccess('Registro guardado correctamente' + (record.synced ? ' y sincronizado' : ' (pendiente de sincronizar)'));
-      
-      // Limpiar después de guardar
-      setTimeout(() => {
-        setSuccess('');
-        resetScan();
-      }, 2000);
+      setSuccessModalOpen(true);
+
     } catch (error) {
       console.error('Error al guardar registro:', error);
       setError('Error al guardar: ' + error.message);
@@ -444,11 +442,26 @@ const ScanPage = () => {
         </Alert>
       )}
 
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
+      <Dialog
+        open={successModalOpen}
+        onClose={() => setSuccessModalOpen(false)}
+      >
+        <DialogTitle>Registro guardado</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {success || 'Registro guardado correctamente.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setSuccessModalOpen(false);
+            setSuccess('');
+            resetScan();
+          }} autoFocus>
+            Aceptar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Stack spacing={2} direction="row" justifyContent="center">
         <Button 
