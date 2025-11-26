@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Container, Typography, Box, Button, Paper, 
   TextField, CircularProgress, Alert, Stack,
-  IconButton, FormControlLabel, Switch
+  IconButton
 } from '@mui/material';
 import { CameraAlt, Save, FlipCameraIos, Refresh } from '../components/AppIcons';
 import Webcam from 'react-webcam';
@@ -22,7 +22,7 @@ const ScanPage = () => {
   const [facingMode, setFacingMode] = useState('environment'); // 'user' para cámara frontal, 'environment' para trasera
   const webcamRef = useRef(null);
   const [ocrProgress, setOcrProgress] = useState(0);
-  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(false);
+  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(true);
   const autoCaptureIntervalRef = useRef(null);
   
   // No necesitamos mantener una referencia al worker
@@ -187,6 +187,7 @@ const ScanPage = () => {
     setError('');
     setSuccess('');
     setOcrProgress(0);
+    setAutoCaptureEnabled(true);
   };
 
   // Función para obtener la ubicación actual
@@ -308,31 +309,12 @@ const ScanPage = () => {
       
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <FormControlLabel
-            control={
-              <Switch
-                color="primary"
-                checked={autoCaptureEnabled}
-                onChange={(e) => {
-                  setAutoCaptureEnabled(e.target.checked);
-                  if (!e.target.checked) {
-                    setOcrProgress(0);
-                  } else {
-                    setError('');
-                    setSuccess('');
-                    setImage(null);
-                    setExtractedGuide('');
-                  }
-                }}
-              />
-            }
-            label="Escaneo automático"
-          />
-          {autoCaptureEnabled && (
-            <Typography variant="body2" color="text.secondary">
-              Capturaremos la foto al detectar la guía
-            </Typography>
-          )}
+          <Typography variant="h6" component="span">
+            Escaneo automático
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Capturaremos la foto al detectar la guía
+          </Typography>
         </Box>
 
         {!image ? (
