@@ -4,6 +4,9 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
+import AppBar from '@mui/material/AppBar'
+import Toolbar from '@mui/material/Toolbar'
+import Typography from '@mui/material/Typography'
 import './App.css'
 
 // Importamos las páginas
@@ -63,6 +66,15 @@ const AppRoutes = () => {
   return (
     <Router>
       <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <AppBar position="sticky" color="primary" elevation={1}>
+          <Toolbar sx={{ justifyContent: 'center' }}>
+            <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', letterSpacing: 0.5 }}>
+              Lector de Guías
+            </Typography>
+          </Toolbar>
+        </AppBar>
+        {/* Separador para evitar que el contenido quede oculto bajo el AppBar */}
+        <Toolbar sx={{ display: { xs: 'block', sm: 'none' } }} />
         <Routes>
           <Route path="/login" element={!currentUser ? <LoginPage /> : <Navigate to="/scan" />} />
           <Route path="/scan" element={currentUser ? <ScanPage /> : <Navigate to="/login" />} />
