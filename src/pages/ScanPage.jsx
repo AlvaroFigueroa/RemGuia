@@ -46,6 +46,31 @@ const ScanPage = () => {
     });
   }, []);
 
+  const enforceLandscape = useCallback(async (imageSrc) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const targetWidth = 1280;
+        const targetHeight = 720;
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+
+        const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
+        const scaledWidth = img.width * scale;
+        const scaledHeight = img.height * scale;
+        const offsetX = (targetWidth - scaledWidth) / 2;
+        const offsetY = (targetHeight - scaledHeight) / 2;
+
+        ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+        resolve(canvas.toDataURL('image/jpeg', 0.92));
+      };
+      img.onerror = () => resolve(imageSrc);
+      img.src = imageSrc;
+    });
+  }, []);
+
   const isMobileDevice = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -285,13 +310,15 @@ const ScanPage = () => {
       if (fromAuto) {
         appendDebugLog('Captura automática disparada');
       }
-      const imageSrc = webcamRef.current.getScreenshot();
+      const rawImageSrc = webcamRef.current.getScreenshot();
 
-      if (!imageSrc) {
+      if (!rawImageSrc) {
         setError('No se pudo capturar la imagen');
         appendDebugLog('Error: getScreenshot() devolvió null');
         return;
       }
+
+      const imageSrc = await enforceLandscape(rawImageSrc);
 
       appendDebugLog(`Imagen capturada (${Math.round(imageSrc.length / 1024)} KB aprox.)`);
 
@@ -307,7 +334,7 @@ const ScanPage = () => {
       setError('No se pudo acceder a la cámara');
       appendDebugLog('Error: webcamRef no disponible');
     }
-  }, [appendDebugLog, processCapturedFrame]);
+  }, [appendDebugLog, enforceLandscape, processCapturedFrame]);
 
   const flipCamera = useCallback(() => {
     setFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user');
@@ -497,14 +524,31 @@ const ScanPage = () => {
         {!image ? (
           // Mostrar cámara si no hay imagen capturada
           <Box sx={{ mb: 2, position: 'relative' }}>
-            <Box sx={{ width: '100%', border: '1px solid #ccc', borderRadius: '4px', overflow: 'hidden' }}>
+            <Box
+              sx={{
+                width: '100%',
+                border: '1px solid #ccc',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                position: 'relative',
+                paddingTop: '56.25%',
+                backgroundColor: '#000'
+              }}
+            >
               <Webcam
                 audio={false}
                 ref={webcamRef}
                 screenshotFormat="image/jpeg"
                 screenshotQuality={screenshotQuality}
                 videoConstraints={videoConstraints}
-                style={{ width: '100%', height: 'auto' }}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
               />
             </Box>
             
@@ -531,11 +575,30 @@ const ScanPage = () => {
         ) : (
           // Mostrar imagen capturada
           <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <Box sx={{ width: '100%', overflow: 'hidden', border: '1px solid #ccc', borderRadius: '4px', mb: 2 }}>
-              <img 
-                src={image} 
-                alt="Imagen capturada" 
-                style={{ width: '100%', height: 'auto' }} 
+            <Box
+              sx={{
+                width: '100%',
+                border: '1px solid #ccc',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                position: 'relative',
+                paddingTop: '56.25%',
+                backgroundColor: '#000',
+                mb: 2
+              }}
+            >
+              <Box
+                component="img"
+                src={image}
+                alt="Imagen capturada"
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
               />
             </Box>
             
