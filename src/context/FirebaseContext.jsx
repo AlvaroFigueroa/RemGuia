@@ -14,7 +14,6 @@ import {
   getDocs, 
   query, 
   where, 
-  orderBy,
   serverTimestamp,
   updateDoc,
   doc,
@@ -96,15 +95,20 @@ export const FirebaseProvider = ({ children }) => {
 
       const q = query(
         collection(db, 'guideRecords'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', userId)
       );
 
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
+      const records = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+
+      return records.sort((a, b) => {
+        const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || a.date || 0).getTime();
+        const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || b.date || 0).getTime();
+        return bTime - aTime;
+      });
     } catch (error) {
       console.error('Error al obtener registros:', error);
       throw error;

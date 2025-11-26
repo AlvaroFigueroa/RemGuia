@@ -42,7 +42,7 @@ const Navigation = () => {
         onChange={handleChange}
       >
         <BottomNavigationAction label="Escanear" icon={<QrCodeScanner />} />
-        <BottomNavigationAction label="Historial" icon={<History />} />
+        <BottomNavigationAction label="Registros" icon={<History />} />
         <BottomNavigationAction label="Configuración" icon={<Settings />} />
       </BottomNavigation>
     </Paper>

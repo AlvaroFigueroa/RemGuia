@@ -18,12 +18,18 @@ const HistoryPage = () => {
   const [dateFilter, setDateFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [dataSource, setDataSource] = useState('local'); // 'local' o 'firebase'
 
   // Cargar registros
   useEffect(() => {
+    if (!currentUser) {
+      setRecords([]);
+      setFilteredRecords([]);
+      setError('Debes iniciar sesión para ver tus registros.');
+      return;
+    }
+
     loadRecords();
-  }, [dataSource]);
+  }, [currentUser]);
   
   // Función para cargar registros desde la fuente seleccionada
   const loadRecords = async () => {
@@ -31,34 +37,19 @@ const HistoryPage = () => {
     setError('');
     
     try {
-      if (dataSource === 'firebase' && currentUser) {
-        // Cargar desde Firebase
-        const firebaseRecords = await getGuideRecords();
-        setRecords(firebaseRecords);
-        setFilteredRecords(firebaseRecords);
-      } else {
-        // Cargar desde localStorage
-        const loadedRecords = JSON.parse(localStorage.getItem('guideRecords') || '[]');
-        setRecords(loadedRecords);
-        setFilteredRecords(loadedRecords);
+      if (!currentUser) {
+        throw new Error('Usuario no autenticado');
       }
+
+      const firebaseRecords = await getGuideRecords();
+      setRecords(firebaseRecords);
+      setFilteredRecords(firebaseRecords);
     } catch (error) {
       console.error('Error al cargar registros:', error);
       setError('Error al cargar registros: ' + error.message);
-      // Si falla Firebase, cargar desde localStorage como respaldo
-      if (dataSource === 'firebase') {
-        const loadedRecords = JSON.parse(localStorage.getItem('guideRecords') || '[]');
-        setRecords(loadedRecords);
-        setFilteredRecords(loadedRecords);
-      }
     } finally {
       setIsLoading(false);
     }
-  };
-  
-  // Cambiar fuente de datos
-  const toggleDataSource = () => {
-    setDataSource(prev => prev === 'local' ? 'firebase' : 'local');
   };
 
   // Filtrar registros cuando cambia el término de búsqueda o el filtro de fecha
@@ -121,7 +112,7 @@ const HistoryPage = () => {
   return (
     <Container maxWidth="sm" sx={{ pt: 2, pb: 8 }}>
       <Typography variant="h4" component="h1" gutterBottom align="center">
-        Historial de Guías
+        Registros
       </Typography>
       
       {error && (
@@ -166,30 +157,20 @@ const HistoryPage = () => {
           </FormControl>
         </Box>
         
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-start', gap: 1, alignItems: 'center' }}>
           <Button
             variant="outlined"
             startIcon={<Refresh />}
             onClick={loadRecords}
             size="small"
+            disabled={!currentUser}
           >
             Actualizar
           </Button>
-          
-          {currentUser && (
-            <Button
-              variant="outlined"
-              color={dataSource === 'firebase' ? 'primary' : 'secondary'}
-              onClick={toggleDataSource}
-              size="small"
-            >
-              {dataSource === 'local' ? 'Ver registros en la nube' : 'Ver registros locales'}
-            </Button>
-          )}
         </Box>
         
         <Typography variant="subtitle1" gutterBottom>
-          {filteredRecords.length} registro(s) encontrado(s) {dataSource === 'firebase' ? 'en la nube' : 'localmente'}
+          {filteredRecords.length} registro(s) encontrado(s) en Firestore
         </Typography>
         
         {isLoading ? (
@@ -261,7 +242,7 @@ const HistoryPage = () => {
             <ListItem>
               <ListItemText 
                 primary="No hay registros" 
-                secondary={`No se encontraron registros ${dataSource === 'firebase' ? 'en la nube' : 'localmente'}`}
+                secondary="No se encontraron registros en Firestore"
               />
             </ListItem>
           )}
