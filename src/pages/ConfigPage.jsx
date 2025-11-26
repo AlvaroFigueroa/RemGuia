@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Container, Typography, Box, Paper, List, ListItem, 
-  ListItemText, Switch, Button, Divider, Dialog,
+  ListItemText, ListItemIcon, Switch, Button, Divider, Dialog,
   DialogActions, DialogContent, DialogContentText,
   DialogTitle, CircularProgress, Alert, Snackbar
 } from '@mui/material';
