@@ -254,7 +254,8 @@ const ScanPage = () => {
         date: new Date().toISOString(),
         location: currentLocation || { latitude: 'No disponible', longitude: 'No disponible' },
         // No guardamos la imagen completa, solo una referencia
-        imageCapture: image ? true : false
+        imageCapture: Boolean(image),
+        imageData: image || null
       };
       
       // Verificar si hay conexión a internet

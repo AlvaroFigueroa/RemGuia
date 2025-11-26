@@ -231,6 +231,19 @@ const HistoryPage = () => {
                             Archivo: {record.fileName}
                           </Typography>
                         )}
+                        {record.imageData && (
+                          <Box component="span" display="block" mt={1}>
+                            <Typography component="span" variant="caption" color="text.secondary">
+                              Imagen capturada:
+                            </Typography>
+                            <Box
+                              component="img"
+                              src={record.imageData}
+                              alt={`Captura de ${record.guideNumber}`}
+                              sx={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 1, mt: 0.5 }}
+                            />
+                          </Box>
+                        )}
                       </>
                     }
                   />
