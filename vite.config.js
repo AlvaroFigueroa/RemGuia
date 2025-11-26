@@ -9,6 +9,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      workbox: {
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 // permite precachear ocr/tesseract-core-simd.wasm.js (~4.8 MB)
+      },
       manifest: {
         name: 'Registro de Guías | Remfisc',
         short_name: 'Registro Guías',
