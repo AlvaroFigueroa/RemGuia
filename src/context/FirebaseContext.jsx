@@ -155,6 +155,7 @@ export const FirebaseProvider = ({ children }) => {
           const recordToSave = {
             ...record,
             userId,
+            location: record.location || { latitude: 'No disponible', longitude: 'No disponible' },
             createdAt: record.date ? new Date(record.date) : new Date(),
             updatedAt: serverTimestamp(),
             synced: true,
@@ -162,7 +163,6 @@ export const FirebaseProvider = ({ children }) => {
           };
 
           delete recordToSave.file; // Eliminar el archivo binario
-          delete recordToSave.imageData; // No subir la imagen en base64 durante la sincronización
           if (recordToSave.pdfUrl === undefined) {
             delete recordToSave.pdfUrl;
           }
