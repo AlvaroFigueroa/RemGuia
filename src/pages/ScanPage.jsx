@@ -28,6 +28,31 @@ const ScanPage = () => {
   const autoCaptureIntervalRef = useRef(null);
   const getInitialOnlineStatus = () => (typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
+  const LAST_LOCATION_KEY = 'lastKnownLocation';
+
+  const getStoredLocation = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = localStorage.getItem(LAST_LOCATION_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch (storageError) {
+      console.warn('No se pudo leer la ubicación guardada:', storageError);
+      return null;
+    }
+  }, []);
+
+  const persistLocation = useCallback((locationData) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(
+        LAST_LOCATION_KEY,
+        JSON.stringify({ ...locationData, timestamp: Date.now() })
+      );
+    } catch (storageError) {
+      console.warn('No se pudo guardar la ubicación localmente:', storageError);
+    }
+  }, []);
+
   const basePath = import.meta.env.BASE_URL ?? '/';
   const normalizedBasePath = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
   const tesseractPaths = useMemo(() => ({
@@ -221,7 +246,7 @@ const ScanPage = () => {
 
   // Función para obtener la ubicación actual
   // Función para obtener la ubicación como una promesa
-  const getLocation = () => {
+  const getLocation = useCallback(() => {
     return new Promise((resolve, reject) => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -231,19 +256,32 @@ const ScanPage = () => {
               longitude: position.coords.longitude,
             };
             setLocation(locationData);
+            persistLocation(locationData);
             resolve(locationData);
           },
           (error) => {
             console.warn('Error de geolocalización:', error.message);
-            reject('No se pudo obtener la ubicación');
+            const stored = getStoredLocation();
+            if (stored) {
+              setLocation(stored);
+              resolve(stored);
+            } else {
+              reject('No se pudo obtener la ubicación');
+            }
           },
           { timeout: 10000, enableHighAccuracy: true } // Opciones para mejorar la precisión
         );
       } else {
-        reject('Geolocalización no soportada en este navegador');
+        const stored = getStoredLocation();
+        if (stored) {
+          setLocation(stored);
+          resolve(stored);
+        } else {
+          reject('Geolocalización no soportada en este navegador');
+        }
       }
     });
-  };
+  }, [getStoredLocation, persistLocation]);
   
   // Actualizar ubicación al cargar la página
   useEffect(() => {
