@@ -142,8 +142,7 @@ const ScanPage = () => {
 
     const startTime = performance.now();
 
-    try {
-      const result = await Tesseract.recognize(
+    const recognitionPromise = Tesseract.recognize(
         imageSrc,
         'eng',
         {
@@ -162,6 +161,18 @@ const ScanPage = () => {
           }
         }
       );
+
+    recognitionPromise.catch(error => {
+      console.warn('OCR async result después del timeout:', error);
+    });
+
+    const timeoutMs = isMobileDevice ? 8000 : 15000;
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('OCR_TIMEOUT')), timeoutMs);
+    });
+
+    try {
+      const result = await Promise.race([recognitionPromise, timeoutPromise]);
 
       const text = result.data.text;
 
@@ -207,15 +218,19 @@ const ScanPage = () => {
       return { guideNumber, confident, rawText: text };
     } catch (error) {
       console.error('Error al procesar la imagen:', error);
-      setError('Error al procesar la imagen');
-      appendDebugLog(`OCR error: ${error.message || error}`);
+      if (error?.message === 'OCR_TIMEOUT') {
+        appendDebugLog(`OCR cancelado por tardar más de ${isMobileDevice ? 8 : 15} segundos`);
+      } else {
+        setError('Error al procesar la imagen');
+        appendDebugLog(`OCR error: ${error.message || error}`);
+      }
       return null;
     } finally {
       const elapsed = Math.round(performance.now() - startTime);
       appendDebugLog(`OCR finalizado en ${elapsed} ms`);
       setIsProcessing(false);
     }
-  }, [appendDebugLog, tesseractPaths]);
+  }, [appendDebugLog, isMobileDevice, tesseractPaths]);
 
   const captureImage = useCallback(async ({ fromAuto = false } = {}) => {
     if (isProcessing) return;
