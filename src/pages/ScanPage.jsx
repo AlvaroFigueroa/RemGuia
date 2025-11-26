@@ -170,7 +170,7 @@ const ScanPage = () => {
       if (!isProcessing && !extractedGuide) {
         captureImage({ fromAuto: true });
       }
-    }, 1500);
+    }, 1000);
 
     return () => {
       if (autoCaptureIntervalRef.current) {
