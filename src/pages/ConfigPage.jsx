@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import { 
   LocationOn, Storage, Sync, DeleteForever, 
-  Logout, CloudSync, CloudOff 
+  Logout, CloudSync, CloudOff, CameraAlt
 } from '../components/AppIcons';
 import { useFirebase } from '../context/FirebaseContext';
 
@@ -26,6 +26,90 @@ const ConfigPage = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [cameraPermission, setCameraPermission] = useState('prompt');
+  const [locationPermission, setLocationPermission] = useState('prompt');
+  const [permissionLoading, setPermissionLoading] = useState({ camera: false, location: false });
+
+  const updatePermissionStates = useCallback(async () => {
+    if (!navigator?.permissions) return;
+    try {
+      const cameraStatus = await navigator.permissions.query({ name: 'camera' });
+      const locationStatus = await navigator.permissions.query({ name: 'geolocation' });
+
+      setCameraPermission(cameraStatus.state);
+      setLocationPermission(locationStatus.state);
+
+      cameraStatus.onchange = () => setCameraPermission(cameraStatus.state);
+      locationStatus.onchange = () => setLocationPermission(locationStatus.state);
+    } catch (error) {
+      console.warn('Permissions API no disponible:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    updatePermissionStates();
+  }, [updatePermissionStates]);
+
+  const requestCameraPermission = useCallback(async () => {
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      setSnackbarMessage('Tu navegador no soporta acceso a la cámara.');
+      setSnackbarOpen(true);
+      return;
+    }
+    setPermissionLoading(prev => ({ ...prev, camera: true }));
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop());
+      setCameraPermission('granted');
+      setSnackbarMessage('Permiso de cámara concedido.');
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.warn('Permiso de cámara denegado:', error);
+      setCameraPermission('denied');
+      setSnackbarMessage('No se pudo acceder a la cámara. Revisa los permisos del navegador.');
+      setSnackbarOpen(true);
+    } finally {
+      setPermissionLoading(prev => ({ ...prev, camera: false }));
+    }
+  }, []);
+
+  const requestLocationPermission = useCallback(async () => {
+    if (!navigator?.geolocation) {
+      setSnackbarMessage('Tu navegador no soporta geolocalización.');
+      setSnackbarOpen(true);
+      return;
+    }
+    setPermissionLoading(prev => ({ ...prev, location: true }));
+    try {
+      await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+      });
+      setLocationPermission('granted');
+      setSnackbarMessage('Permiso de ubicación concedido.');
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.warn('Permiso de ubicación denegado:', error);
+      setLocationPermission('denied');
+      setSnackbarMessage('No se pudo acceder a la ubicación. Revisa los permisos del navegador.');
+      setSnackbarOpen(true);
+    } finally {
+      setPermissionLoading(prev => ({ ...prev, location: false }));
+    }
+  }, []);
+
+  const handlePermissionToggle = useCallback((type, checked) => {
+    if (!checked) {
+      setSnackbarMessage('Para revocar permisos usa la configuración de tu navegador.');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    if (type === 'camera') {
+      requestCameraPermission();
+    } else {
+      requestLocationPermission();
+    }
+  }, [requestCameraPermission, requestLocationPermission]);
 
   const updatePendingRecords = useCallback(() => {
     const records = JSON.parse(localStorage.getItem('guideRecords') || '[]');
@@ -207,6 +291,59 @@ const ConfigPage = () => {
         Configuración
       </Typography>
       
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Permisos requeridos
+        </Typography>
+        <List>
+          <ListItem>
+            <ListItemIcon>
+              <CameraAlt />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Acceso a cámara" 
+              secondary={
+                cameraPermission === 'granted'
+                  ? 'Permiso concedido'
+                  : cameraPermission === 'denied'
+                    ? 'Permiso denegado. Habilítalo desde la configuración del navegador.'
+                    : 'Necesario para escanear guías.'
+              }
+            />
+            <Switch
+              edge="end"
+              checked={cameraPermission === 'granted'}
+              onChange={(e) => handlePermissionToggle('camera', e.target.checked)}
+              disabled={permissionLoading.camera}
+            />
+          </ListItem>
+
+          <Divider variant="inset" component="li" />
+
+          <ListItem>
+            <ListItemIcon>
+              <LocationOn />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Acceso a ubicación" 
+              secondary={
+                locationPermission === 'granted'
+                  ? 'Permiso concedido'
+                  : locationPermission === 'denied'
+                    ? 'Permiso denegado. Habilítalo desde la configuración del navegador.'
+                    : 'Necesario para guardar la geolocalización.'
+              }
+            />
+            <Switch
+              edge="end"
+              checked={locationPermission === 'granted'}
+              onChange={(e) => handlePermissionToggle('location', e.target.checked)}
+              disabled={permissionLoading.location}
+            />
+          </ListItem>
+        </List>
+      </Paper>
+
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <List>
           <ListItem>
