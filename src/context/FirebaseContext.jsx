@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -31,6 +31,7 @@ export const useFirebase = () => useContext(FirebaseContext);
 export const FirebaseProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const isSyncingRef = useRef(false);
 
   // Escuchar cambios en el estado de autenticación
   useEffect(() => {
@@ -178,6 +179,84 @@ export const FirebaseProvider = ({ children }) => {
     }
   };
 
+  const syncPendingRecords = useCallback(async () => {
+    try {
+      if (isSyncingRef.current) {
+        return { success: false, message: 'Sincronización en curso' };
+      }
+
+      const userId = currentUser?.uid;
+      if (!userId) {
+        return { success: false, message: 'Debes iniciar sesión para sincronizar tus registros.' };
+      }
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return { success: false, message: 'Sin conexión a internet. Inténtalo cuando vuelvas a tener señal.' };
+      }
+
+      const records = JSON.parse(localStorage.getItem('guideRecords') || '[]');
+      const pendingRecords = records.filter(record => !record.synced);
+
+      if (pendingRecords.length === 0) {
+        return { success: false, message: 'No hay registros pendientes para sincronizar', remainingPending: 0 };
+      }
+
+      isSyncingRef.current = true;
+
+      const result = await syncLocalRecords(pendingRecords);
+
+      if (result.success) {
+        const syncedRecords = result.records || [];
+        const syncedIds = new Set(syncedRecords.map(record => record.localId).filter(Boolean));
+        const remainingRecords = records.filter(record => !syncedIds.has(record.localId));
+        localStorage.setItem('guideRecords', JSON.stringify(remainingRecords));
+
+        const nowISO = new Date().toISOString();
+        localStorage.setItem('lastSync', nowISO);
+
+        const remainingPending = remainingRecords.filter(record => !record.synced).length;
+        window.dispatchEvent(new CustomEvent('guideRecordsUpdated'));
+
+        return {
+          success: true,
+          message: result.message || 'Registros sincronizados correctamente',
+          syncedCount: syncedIds.size,
+          remainingPending,
+          lastSync: nowISO
+        };
+      }
+
+      return {
+        success: false,
+        message: result.message || 'Error al sincronizar registros'
+      };
+    } catch (error) {
+      console.error('Error al sincronizar registros pendientes:', error);
+      return {
+        success: false,
+        message: error.message || 'Error inesperado al sincronizar'
+      };
+    } finally {
+      isSyncingRef.current = false;
+    }
+  }, [currentUser, syncLocalRecords]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const handleOnline = () => {
+      syncPendingRecords();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [currentUser, syncPendingRecords]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    syncPendingRecords();
+  }, [currentUser, syncPendingRecords]);
+
   // Valor del contexto
   const value = {
     currentUser,
@@ -189,6 +268,7 @@ export const FirebaseProvider = ({ children }) => {
     getGuideRecords,
     uploadPDF,
     syncLocalRecords,
+    syncPendingRecords,
     loading
   };
 
