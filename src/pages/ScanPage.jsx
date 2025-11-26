@@ -72,11 +72,15 @@ const ScanPage = () => {
 
   const basePath = import.meta.env.BASE_URL ?? '/';
   const normalizedBasePath = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
+  const supportsSimd = typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : false;
   const tesseractPaths = useMemo(() => ({
     workerPath: `${normalizedBasePath}/ocr/worker.min.js`,
-    corePath: `${normalizedBasePath}/ocr/tesseract-core-simd.wasm.js`,
-    langPath: `${normalizedBasePath}/ocr/lang-data`
-  }), [normalizedBasePath]);
+    corePath: supportsSimd
+      ? `${normalizedBasePath}/ocr/tesseract-core-simd.wasm.js`
+      : `${normalizedBasePath}/ocr/tesseract-core.wasm.js`,
+    langPath: `${normalizedBasePath}/ocr/lang-data`,
+    usingSimd: supportsSimd
+  }), [normalizedBasePath, supportsSimd]);
   
   // No necesitamos mantener una referencia al worker
   // Usaremos Tesseract.recognize directamente
@@ -100,6 +104,13 @@ const ScanPage = () => {
       // No hay worker que terminar
     };
   }, [tesseractPaths]);
+
+  useEffect(() => {
+    appendDebugLog(tesseractPaths.usingSimd
+      ? 'OCR usando núcleo SIMD (requiere aislamiento)'
+      : 'OCR usando núcleo estándar (compatible con móviles)'
+    );
+  }, [appendDebugLog, tesseractPaths]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
