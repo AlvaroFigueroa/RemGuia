@@ -7,7 +7,6 @@ import {
   Grid,
   TextField,
   MenuItem,
-  Button,
   Chip,
   Divider,
   Alert,
@@ -18,12 +17,10 @@ import {
 } from '@mui/material';
 import { useFirebase } from '../context/FirebaseContext';
 import {
-  Refresh,
   LocationOn,
   CloudSync,
   CloudOff,
-  CloudDone,
-  History as HistoryIcon
+  CloudDone
 } from '../components/AppIcons';
 
 const isoDate = (date) => date.toISOString().split('T')[0];
@@ -72,7 +69,7 @@ const DashboardPage = () => {
     missingInDestino: [],
     missingInUbicacion: []
   });
-  const [lastComparison, setLastComparison] = useState(null);
+  
 
   const transporteApiBaseUrl = useMemo(() => {
     const base = import.meta.env.VITE_TRANSPORTE_API || '';
@@ -172,7 +169,6 @@ const DashboardPage = () => {
       setDestinoGuides(destinoData);
       setUbicacionGuides(ubicacionData);
       setDifferences(compareGuides(ubicacionData, destinoData));
-      setLastComparison(new Date());
     } catch (err) {
       console.error('Error al comparar guías:', err);
       setError(err.message || 'No se pudo comparar la información.');
@@ -275,22 +271,6 @@ const DashboardPage = () => {
             </TextField>
           </Grid>
         </Grid>
-        <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <Button
-            variant="contained"
-            startIcon={<Refresh />}
-            onClick={handleCompare}
-            disabled={isComparing}
-          >
-            {isComparing ? 'Comparando…' : 'Comparar guías'}
-          </Button>
-          {lastComparison && (
-            <Chip
-              icon={<HistoryIcon />}
-              label={`Última comparación: ${lastComparison.toLocaleString('es-CL')}`}
-            />
-          )}
-        </Box>
       </Paper>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
