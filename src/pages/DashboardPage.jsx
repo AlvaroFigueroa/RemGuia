@@ -479,8 +479,8 @@ const DashboardPage = () => {
                       >
                         <ListItemText
                           primary={
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                              <Typography variant="subtitle1" fontWeight={600}>
+                            <Box component="div" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                              <Typography variant="subtitle1" fontWeight={600} component="span">
                                 N° {guide.guideNumber || 'Sin número'}
                               </Typography>
                               <Chip
@@ -491,11 +491,11 @@ const DashboardPage = () => {
                             </Box>
                           }
                           secondary={
-                            <Box component="span" sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                              <Typography variant="body2"><strong>Destino:</strong> {record.destination || 'No registrado'}</Typography>
-                              <Typography variant="body2"><strong>Subdestino:</strong> {record.subDestination || 'No registrado'}</Typography>
-                              <Typography variant="body2"><strong>Ubicación:</strong> {record.location?.alias || record.location?.name || 'No registrada'}</Typography>
-                              <Box sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                            <Box component="div" sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Typography variant="body2" component="span"><strong>Destino:</strong> {record.destination || 'No registrado'}</Typography>
+                              <Typography variant="body2" component="span"><strong>Subdestino:</strong> {record.subDestination || 'No registrado'}</Typography>
+                              <Typography variant="body2" component="span"><strong>Ubicación:</strong> {record.location?.alias || record.location?.name || 'No registrada'}</Typography>
+                              <Box component="div" sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                                 <Typography component="span" variant="body2" color="text.secondary">
                                   {formatDate(record.date || guide.date)}
                                 </Typography>

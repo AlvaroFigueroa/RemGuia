@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -36,6 +36,11 @@ export const FirebaseProvider = ({ children }) => {
   const [profileLoading, setProfileLoading] = useState(false);
   const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const isSyncingRef = useRef(false);
+  const transporteApiBaseUrl = useMemo(() => {
+    const envBase = (import.meta.env.VITE_TRANSPORTE_API || '').trim();
+    const base = envBase.length > 0 ? envBase : 'https://guia.codecland.com/api';
+    return base.endsWith('/') ? base.slice(0, -1) : base;
+  }, []);
 
   // Escuchar cambios en el estado de autenticación
   useEffect(() => {
@@ -376,7 +381,24 @@ export const FirebaseProvider = ({ children }) => {
   // Catálogo de destinos y ubicaciones
   const mapTimestamp = (value) => (value?.toDate ? value.toDate() : value || null);
 
+  const fetchSqlDestinationsCatalog = useCallback(async () => {
+    const response = await fetch(`${transporteApiBaseUrl}/destinos_with_subdestinos.php`);
+    if (!response.ok) {
+      throw new Error('No se pudieron obtener los destinos desde el servidor SQL');
+    }
+    const payload = await response.json();
+    if (!payload?.success) {
+      throw new Error(payload?.message || 'Respuesta inválida del servidor de destinos');
+    }
+    return Array.isArray(payload.data) ? payload.data : [];
+  }, [transporteApiBaseUrl]);
+
   const getDestinationsCatalog = async () => {
+    try {
+      return await fetchSqlDestinationsCatalog();
+    } catch (sqlError) {
+      console.warn('Fallo al cargar destinos desde SQL, usando Firestore como respaldo:', sqlError);
+    }
     const snapshot = await getDocs(collection(db, 'destinationsCatalog'));
     return snapshot.docs
       .map((docItem) => {
@@ -495,6 +517,7 @@ export const FirebaseProvider = ({ children }) => {
     updateLocationCatalog,
     deleteLocationCatalog,
     createManagedUser,
+    fetchSqlDestinationsCatalog,
     loading,
     profileLoading
   };

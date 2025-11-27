@@ -43,6 +43,22 @@ const formatDate = (value) => {
 
 const DEFAULT_ROLES = ['usuario', 'admin', 'supervisor'];
 
+const encodeDestinationValue = (destination = '', subDestination = '') => {
+  if (!destination) return '';
+  return subDestination ? `${destination}:::${subDestination}` : destination;
+};
+
+const decodeDestinationValue = (value = '') => {
+  if (!value) {
+    return { destination: '' };
+  }
+  if (!value.includes(':::')) {
+    return { destination: value };
+  }
+  const [destination, subDestination = ''] = value.split(':::');
+  return subDestination ? { destination, subDestination } : { destination };
+};
+
 const UsersManagementPage = () => {
   const {
     getAllUsers,
@@ -185,7 +201,9 @@ const UsersManagementPage = () => {
       location: user.location || '',
       destinations:
         user.destinations && Array.isArray(user.destinations) && user.destinations.length > 0
-          ? user.destinations.map((entry) => entry.destination).filter(Boolean)
+          ? user.destinations
+              .map((entry) => encodeDestinationValue(entry.destination || '', entry.subDestination || ''))
+              .filter(Boolean)
           : []
     });
   };
@@ -195,7 +213,20 @@ const UsersManagementPage = () => {
   };
 
   const normalizedDestinations = useCallback((entries = []) => {
-    return entries.filter(Boolean).map((destination) => ({ destination }));
+    return entries
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          return decodeDestinationValue(entry);
+        }
+        if (entry && typeof entry === 'object') {
+          return {
+            destination: entry.destination || '',
+            ...(entry.subDestination ? { subDestination: entry.subDestination } : {})
+          };
+        }
+        return null;
+      })
+      .filter((item) => item?.destination);
   }, []);
 
   const handleDialogSubmit = async () => {
@@ -242,10 +273,22 @@ const UsersManagementPage = () => {
     }
   };
 
-  const availableDestinations = destinationsCatalog.map((dest) => ({
-    value: dest.name,
-    label: dest.name
-  }));
+  const destinationOptions = useMemo(() => {
+    return destinationsCatalog.flatMap((dest) => {
+      const destinationName = dest.name || '';
+      if (!destinationName) return [];
+      const subDestinations = Array.isArray(dest.subDestinations) ? dest.subDestinations : [];
+      const baseOption = {
+        value: encodeDestinationValue(destinationName, ''),
+        label: destinationName
+      };
+      const subOptions = subDestinations.map((sub) => ({
+        value: encodeDestinationValue(destinationName, sub),
+        label: `${destinationName} - ${sub}`
+      }));
+      return subOptions.length > 0 ? [baseOption, ...subOptions] : [baseOption];
+    });
+  }, [destinationsCatalog]);
 
   const availableLocations = locationsCatalog.map((location) => ({
     value: location.name,
@@ -372,8 +415,9 @@ const UsersManagementPage = () => {
                       <TableCell>
                         {Array.isArray(user.destinations) && user.destinations.length > 0
                           ? user.destinations.map((entry, idx) => (
-                              <Typography key={`${entry.destination}-${idx}`} component="span" variant="body2" display="block">
+                              <Typography key={`${entry.destination}-${entry.subDestination || 'none'}-${idx}`} component="span" variant="body2" display="block">
                                 {entry.destination || '—'}
+                                {entry.subDestination ? ` - ${entry.subDestination}` : ''}
                               </Typography>
                             ))
                           : '—'}
@@ -481,12 +525,12 @@ const UsersManagementPage = () => {
                 selected.length === 0
                   ? 'Sin destinos'
                   : selected
-                      .map((value) => availableDestinations.find((d) => d.value === value)?.label || value)
+                      .map((value) => destinationOptions.find((d) => d.value === value)?.label || value)
                       .join(', ')
             }}
             disabled={catalogsLoading.destinations}
           >
-            {availableDestinations.map((destination) => (
+            {destinationOptions.map((destination) => (
               <MenuItem key={destination.value} value={destination.value}>
                 {destination.label}
               </MenuItem>
@@ -553,12 +597,12 @@ const UsersManagementPage = () => {
                 selected.length === 0
                   ? 'Sin destinos'
                   : selected
-                      .map((value) => availableDestinations.find((d) => d.value === value)?.label || value)
+                      .map((value) => destinationOptions.find((d) => d.value === value)?.label || value)
                       .join(', ')
             }}
             disabled={catalogsLoading.destinations}
           >
-            {availableDestinations.map((destination) => (
+            {destinationOptions.map((destination) => (
               <MenuItem key={destination.value} value={destination.value}>
                 {destination.label}
               </MenuItem>
