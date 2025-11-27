@@ -20,7 +20,7 @@ try {
     ], $e->getCode() ?: 500);
 }
 
-$sql = 'SELECT * FROM destinos';
+$sql = 'SELECT destino FROM destinos GROUP BY destino';
 $result = $mysqli->query($sql);
 
 if (!$result) {
@@ -33,22 +33,17 @@ if (!$result) {
 }
 
 $destinos = [];
+$autoincrement = 1;
 while ($row = $result->fetch_assoc()) {
-    $destinoId = isset($row['id']) ? (int)$row['id'] : crc32(json_encode($row));
-    $destinoNombre = $row['destino'] ?? $row['nombre'] ?? ($row['Destinos'] ?? 'Destino sin nombre');
-    $subdestino = $row['subdestino'] ?? $row['sub_destino'] ?? $row['subDestino'] ?? null;
+    $destinoNombre = isset($row['destino']) && trim($row['destino']) !== ''
+        ? trim($row['destino'])
+        : 'Destino sin nombre';
 
-    if (!isset($destinos[$destinoId])) {
-        $destinos[$destinoId] = [
-            'id' => $destinoId,
-            'name' => $destinoNombre,
-            'subDestinations' => []
-        ];
-    }
-
-    if ($subdestino) {
-        $destinos[$destinoId]['subDestinations'][] = $subdestino;
-    }
+    $destinos[] = [
+        'id' => $autoincrement++,
+        'name' => $destinoNombre,
+        'subDestinations' => []
+    ];
 }
 
 $result->free();
