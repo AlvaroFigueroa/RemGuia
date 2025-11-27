@@ -14,14 +14,20 @@ import {
   List,
   ListItem,
   ListItemText,
-  Stack
+  Stack,
+  Button,
+  Dialog,
+  DialogContent,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import { useFirebase } from '../context/FirebaseContext';
 import {
   LocationOn,
   CloudSync,
   CloudOff,
-  CloudDone
+  CloudDone,
+  Visibility
 } from '../components/AppIcons';
 
 const isoDate = (date) => date.toISOString().split('T')[0];
@@ -70,7 +76,7 @@ const DashboardPage = () => {
     missingInDestino: [],
     missingInUbicacion: []
   });
-  
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const transporteApiBaseUrl = useMemo(() => {
     const base = import.meta.env.VITE_TRANSPORTE_API || '';
@@ -353,8 +359,8 @@ const DashboardPage = () => {
         </Paper>
       </Stack>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+      <Grid container spacing={3} alignItems="stretch">
+        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
           <Paper elevation={3} sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="h6">SQL - Guías por Ubicación</Typography>
@@ -397,8 +403,8 @@ const DashboardPage = () => {
             )}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper elevation={3} sx={{ p: 2 }}>
+        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+          <Paper elevation={3} sx={{ p: 2, width: '100%' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="h6">Firestore - Guías en destino</Typography>
               <Chip label={`${destinoGuides.length} guías`} color="primary" icon={<CloudDone />} />
@@ -441,18 +447,21 @@ const DashboardPage = () => {
                                 </Typography>
                               )}
                               {record.imageData && (
-                                <Box
-                                  component="img"
-                                  src={record.imageData}
-                                  alt={`Captura ${guide.guideNumber}`}
-                                  sx={{
-                                    mt: 1,
-                                    width: '100%',
-                                    borderRadius: 1,
-                                    border: '1px solid',
-                                    borderColor: 'divider'
-                                  }}
-                                />
+                                <Box sx={{ mt: 1 }}>
+                                  <Tooltip title="Ver imagen capturada">
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      startIcon={<Visibility />}
+                                      onClick={() => setSelectedImage({
+                                        src: record.imageData,
+                                        guideNumber: guide.guideNumber
+                                      })}
+                                    >
+                                      Ver imagen
+                                    </Button>
+                                  </Tooltip>
+                                </Box>
                               )}
                             </>
                           }
@@ -467,6 +476,33 @@ const DashboardPage = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      <Dialog
+        open={Boolean(selectedImage)}
+        onClose={() => setSelectedImage(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogContent sx={{ p: 0 }}>
+          {selectedImage && (
+            <Box sx={{ position: 'relative' }}>
+              <IconButton
+                aria-label="Cerrar"
+                onClick={() => setSelectedImage(null)}
+                sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
+              >
+                ✕
+              </IconButton>
+              <Box
+                component="img"
+                src={selectedImage.src}
+                alt={`Imagen guía ${selectedImage.guideNumber}`}
+                sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
     </Container>
   );
 };
