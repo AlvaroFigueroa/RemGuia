@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Container,
   Box,
@@ -96,6 +96,7 @@ const DashboardPage = () => {
   const [locationsCatalog, setLocationsCatalog] = useState([]);
   const [catalogError, setCatalogError] = useState('');
   const [catalogLoading, setCatalogLoading] = useState({ destinations: false, locations: false });
+  const filtersRef = useRef(filters);
 
   const transporteApiBaseUrl = useMemo(() => {
     const envBase = (import.meta.env.VITE_TRANSPORTE_API || '').trim();
@@ -106,6 +107,10 @@ const DashboardPage = () => {
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
   };
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
 
   const parseDateValue = (value) => {
     if (!value) return null;
@@ -196,13 +201,14 @@ const DashboardPage = () => {
     };
   }, []);
 
-  const handleCompare = useCallback(async () => {
+  const handleCompare = useCallback(async (range) => {
+    const activeFilters = range || filtersRef.current;
     setIsComparing(true);
     setError('');
     try {
       const [destinoData, ubicacionData] = await Promise.all([
-        fetchDestinoGuides(filters),
-        fetchUbicacionGuides(filters)
+        fetchDestinoGuides(activeFilters),
+        fetchUbicacionGuides(activeFilters)
       ]);
 
       setDestinoGuides(destinoData);
@@ -214,7 +220,7 @@ const DashboardPage = () => {
     } finally {
       setIsComparing(false);
     }
-  }, [fetchDestinoGuides, fetchUbicacionGuides, compareGuides, filters]);
+  }, [fetchDestinoGuides, fetchUbicacionGuides, compareGuides]);
 
   const loadDestinationsCatalog = useCallback(async () => {
     setCatalogLoading((prev) => ({ ...prev, destinations: true }));
@@ -390,6 +396,26 @@ const DashboardPage = () => {
               </TextField>
             </Grid>
           )}
+          <Grid item xs={12}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1.5}
+              justifyContent="flex-end"
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                Ajusta los filtros y presiona actualizar.
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<CloudSync />}
+                onClick={() => handleCompare(filters)}
+                disabled={isComparing}
+              >
+                {isComparing ? 'Actualizando...' : 'Actualizar panel'}
+              </Button>
+            </Stack>
+          </Grid>
         </Grid>
       </Paper>
 
