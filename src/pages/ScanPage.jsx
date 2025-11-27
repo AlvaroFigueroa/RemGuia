@@ -11,11 +11,40 @@ import Webcam from 'react-webcam';
 import Tesseract from 'tesseract.js';
 import { useFirebase } from '../context/FirebaseContext';
 
+const DESTINATIONS = [
+  {
+    value: 'Santiago',
+    label: 'Santiago',
+    subDestinations: ['Centro', 'Independencia', 'Maipú', 'Puente Alto']
+  },
+  {
+    value: 'Concepción',
+    label: 'Concepción',
+    subDestinations: ['Los Ángeles', 'Coronel', 'Talcahuano']
+  },
+  {
+    value: 'Temuco',
+    label: 'Temuco',
+    subDestinations: ['Padre Las Casas', 'Victoria']
+  },
+  {
+    value: 'Valdivia',
+    label: 'Valdivia',
+    subDestinations: ['Paillaco', 'La Unión']
+  },
+  {
+    value: 'Puerto Montt',
+    label: 'Puerto Montt',
+    subDestinations: ['Osorno', 'Puerto Varas']
+  }
+];
+
 const ScanPage = () => {
   const { saveGuideRecord, currentUser } = useFirebase();
   const [image, setImage] = useState(null);
   const [extractedGuide, setExtractedGuide] = useState('');
   const [destination, setDestination] = useState('');
+  const [subDestination, setSubDestination] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -435,6 +464,14 @@ const ScanPage = () => {
       updateError('No se ha extraído ningún número de guía', { visible: true });
       return;
     }
+    if (!destination) {
+      updateError('Selecciona un destino para continuar', { visible: true });
+      return;
+    }
+    if (!subDestination) {
+      updateError('Selecciona un subdestino para continuar', { visible: true });
+      return;
+    }
 
     setIsLoading(true);
     updateError('', { visible: false });
@@ -459,6 +496,7 @@ const ScanPage = () => {
         localId,
         guideNumber: extractedGuide,
         destination,
+        subDestination,
         date: new Date().toISOString(),
         location: currentLocation || { latitude: 'No disponible', longitude: 'No disponible' },
         // No guardamos la imagen completa, solo una referencia
@@ -648,15 +686,36 @@ const ScanPage = () => {
                 select
                 fullWidth
                 value={destination}
-                onChange={(e) => setDestination(e.target.value)}
+                onChange={(e) => {
+                  setDestination(e.target.value);
+                  setSubDestination('');
+                }}
                 helperText="Selecciona el destino de la guía"
               >
                 <MenuItem value="">Selecciona un destino</MenuItem>
-                <MenuItem value="Santiago">Santiago</MenuItem>
-                <MenuItem value="Concepción">Concepción</MenuItem>
-                <MenuItem value="Temuco">Temuco</MenuItem>
-                <MenuItem value="Valdivia">Valdivia</MenuItem>
-                <MenuItem value="Puerto Montt">Puerto Montt</MenuItem>
+                {DESTINATIONS.map((dest) => (
+                  <MenuItem key={dest.value} value={dest.value}>
+                    {dest.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Box>
+            <Box sx={{ mb: 2 }}>
+              <TextField
+                label="SubDestino"
+                select
+                fullWidth
+                value={subDestination}
+                onChange={(e) => setSubDestination(e.target.value)}
+                helperText={destination ? 'Selecciona el subdestino' : 'Selecciona primero un destino'}
+                disabled={!destination}
+              >
+                <MenuItem value="">Selecciona un subdestino</MenuItem>
+                {destination && DESTINATIONS.find((d) => d.value === destination)?.subDestinations.map((sub) => (
+                  <MenuItem key={sub} value={sub}>
+                    {sub}
+                  </MenuItem>
+                ))}
               </TextField>
             </Box>
           </>
@@ -667,7 +726,7 @@ const ScanPage = () => {
           color="primary"
           startIcon={<Save />}
           fullWidth
-          disabled={!extractedGuide || !destination || isLoading || isProcessing}
+          disabled={!extractedGuide || !destination || !subDestination || isLoading || isProcessing}
           onClick={saveRecord}
         >
           {isLoading ? <CircularProgress size={24} /> : 'Guardar Registro'}
