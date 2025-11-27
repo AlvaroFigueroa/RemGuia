@@ -1,11 +1,8 @@
 <?php
+require_once __DIR__ . '/db_connection.php';
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-
-define('DB_HOST', 'eth.v2net.cl:3306');
-define('DB_USER', 'remfi1_rem');
-define('DB_PASS', 'Cb^WUyO%le0R');
-define('DB_NAME', 'remfi1_remfisc');
 
 function respond($payload, $statusCode = 200)
 {
@@ -36,20 +33,47 @@ if (!$startDate || !$endDate) {
 
 $endDate->setTime(23, 59, 59);
 
-$mysqli = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+$ubicacion = isset($_GET['ubicacion']) ? trim($_GET['ubicacion']) : null;
+$destino = isset($_GET['destino']) ? trim($_GET['destino']) : null;
 
-if ($mysqli->connect_errno) {
+try {
+    $mysqli = get_db_connection();
+} catch (RuntimeException $e) {
     respond([
         'success' => false,
-        'message' => 'Error al conectar a la base de datos',
-        'error' => $mysqli->connect_error
-    ], 500);
+        'message' => $e->getMessage()
+    ], $e->getCode() ?: 500);
 }
 
-$mysqli->set_charset('utf8mb4');
+$baseSql = "SELECT * FROM transporte WHERE fecha BETWEEN ? AND ?";
+$conditions = [];
+$params = [];
+$types = 'ss';
 
-$sql = "SELECT * FROM transporte WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC";
-$stmt = $mysqli->prepare($sql);
+$startParam = $startDate->format('Y-m-d 00:00:00');
+$endParam = $endDate->format('Y-m-d H:i:s');
+$params[] = $startParam;
+$params[] = $endParam;
+
+if ($ubicacion && strcasecmp($ubicacion, 'Todos') !== 0) {
+    $conditions[] = 'ubicacion LIKE ?';
+    $types .= 's';
+    $params[] = '%' . $ubicacion . '%';
+}
+
+if ($destino && strcasecmp($destino, 'Todos') !== 0) {
+    $conditions[] = 'destino LIKE ?';
+    $types .= 's';
+    $params[] = '%' . $destino . '%';
+}
+
+if ($conditions) {
+    $baseSql .= ' AND ' . implode(' AND ', $conditions);
+}
+
+$baseSql .= ' ORDER BY fecha DESC';
+
+$stmt = $mysqli->prepare($baseSql);
 
 if (!$stmt) {
     respond([
@@ -59,9 +83,7 @@ if (!$stmt) {
     ], 500);
 }
 
-$startParam = $startDate->format('Y-m-d 00:00:00');
-$endParam = $endDate->format('Y-m-d H:i:s');
-$stmt->bind_param('ss', $startParam, $endParam);
+$stmt->bind_param($types, ...$params);
 
 if (!$stmt->execute()) {
     respond([
