@@ -43,20 +43,27 @@ const formatDate = (value) => {
 
 const DEFAULT_ROLES = ['usuario', 'admin', 'supervisor'];
 
-const encodeDestinationValue = (destination = '', subDestination = '') => {
-  if (!destination) return '';
-  return subDestination ? `${destination}:::${subDestination}` : destination;
+const encodeDestinationValue = (destination = '', subDestination = '', id = '') => {
+  try {
+    return JSON.stringify({ destination, subDestination, id });
+  } catch (error) {
+    return destination;
+  }
 };
 
 const decodeDestinationValue = (value = '') => {
   if (!value) {
     return { destination: '' };
   }
-  if (!value.includes(':::')) {
+  try {
+    const parsed = JSON.parse(value);
+    return {
+      destination: parsed?.destination || '',
+      ...(parsed?.subDestination ? { subDestination: parsed.subDestination } : {})
+    };
+  } catch (error) {
     return { destination: value };
   }
-  const [destination, subDestination = ''] = value.split(':::');
-  return subDestination ? { destination, subDestination } : { destination };
 };
 
 const UsersManagementPage = () => {
@@ -274,20 +281,31 @@ const UsersManagementPage = () => {
   };
 
   const destinationOptions = useMemo(() => {
-    return destinationsCatalog.flatMap((dest) => {
-      const destinationName = dest.name || '';
-      if (!destinationName) return [];
+    const seen = new Set();
+    const options = [];
+
+    destinationsCatalog.forEach((dest, index) => {
+      const rawName = typeof dest.name === 'string' ? dest.name.trim() : '';
+      const displayName = rawName || `Destino ${dest.id ?? index + 1}`;
+      const baseValue = encodeDestinationValue(displayName, '', dest.id ?? `idx-${index}`);
+
+      if (!seen.has(baseValue)) {
+        seen.add(baseValue);
+        options.push({ value: baseValue, label: displayName });
+      }
+
       const subDestinations = Array.isArray(dest.subDestinations) ? dest.subDestinations : [];
-      const baseOption = {
-        value: encodeDestinationValue(destinationName, ''),
-        label: destinationName
-      };
-      const subOptions = subDestinations.map((sub) => ({
-        value: encodeDestinationValue(destinationName, sub),
-        label: `${destinationName} - ${sub}`
-      }));
-      return subOptions.length > 0 ? [baseOption, ...subOptions] : [baseOption];
+      subDestinations.forEach((sub, subIdx) => {
+        const trimmedSub = typeof sub === 'string' ? sub.trim() : String(sub ?? '');
+        const subValue = encodeDestinationValue(displayName, trimmedSub, `${dest.id ?? `idx-${index}`}-sub-${subIdx}`);
+        if (!seen.has(subValue)) {
+          seen.add(subValue);
+          options.push({ value: subValue, label: `${displayName} - ${trimmedSub}` });
+        }
+      });
     });
+
+    return options;
   }, [destinationsCatalog]);
 
   const availableLocations = locationsCatalog.map((location) => ({
