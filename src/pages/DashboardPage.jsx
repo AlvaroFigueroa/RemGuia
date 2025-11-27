@@ -374,7 +374,14 @@ const DashboardPage = () => {
               <List dense sx={{ maxHeight: 400, overflow: 'auto' }}>
                 {ubicacionGuides.map((guide, index) => (
                   <Box key={`sql-${guide.guideNumber}-${index}`}>
-                    <ListItem alignItems="flex-start">
+                    <ListItem
+                      alignItems="flex-start"
+                      sx={{
+                        backgroundColor: index % 2 === 0 ? 'background.paper' : 'grey.50',
+                        borderRadius: 1,
+                        px: 2
+                      }}
+                    >
                       <ListItemText
                         primary={
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -419,7 +426,14 @@ const DashboardPage = () => {
                   const record = guide.rawRecord || {};
                   return (
                     <Box key={`fs-${guide.guideNumber}-${index}`}>
-                      <ListItem alignItems="flex-start">
+                      <ListItem
+                        alignItems="flex-start"
+                        sx={{
+                          backgroundColor: index % 2 === 0 ? 'background.paper' : 'grey.50',
+                          borderRadius: 1,
+                          px: 2
+                        }}
+                      >
                         <ListItemText
                           primary={
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
