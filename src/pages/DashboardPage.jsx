@@ -386,7 +386,7 @@ const DashboardPage = () => {
                         primary={
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="subtitle1" fontWeight={600}>
-                              {guide.guideNumber || 'Sin número'}
+                              N° {guide.guideNumber || 'Sin número'}
                             </Typography>
                             <Chip size="small" label={guide.destino || 'Sin destino'} />
                           </Box>
@@ -438,7 +438,7 @@ const DashboardPage = () => {
                           primary={
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <Typography variant="subtitle1" fontWeight={600}>
-                                {guide.guideNumber || 'Sin número'}
+                                N° {guide.guideNumber || 'Sin número'}
                               </Typography>
                               <Chip
                                 size="small"
