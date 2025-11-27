@@ -513,7 +513,7 @@ const ScanPage = () => {
       const localId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
       // Crear objeto de registro
-      const recordToSave = {
+      const record = {
         localId,
         guideNumber: extractedGuide,
         destination,
