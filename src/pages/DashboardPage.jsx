@@ -27,7 +27,7 @@ import {
   CloudSync,
   CloudOff,
   CloudDone,
-  Visibility
+  Image
 } from '../components/AppIcons';
 
 const isoDate = (date) => date.toISOString().split('T')[0];
@@ -436,33 +436,41 @@ const DashboardPage = () => {
                           }
                           secondary={
                             <>
-                              <Typography component="span" variant="body2" color="text.secondary">
-                                {formatDate(record.date || guide.date)}
-                              </Typography>
-                              {record.location && (
-                                <Typography component="span" variant="body2" display="block">
-                                  Ubicación registrada: {record.location.latitude !== 'No disponible'
-                                    ? `${record.location.latitude}, ${record.location.longitude}`
-                                    : 'No disponible'}
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                                <Typography component="span" variant="body2" color="text.secondary">
+                                  {formatDate(record.date || guide.date)}
                                 </Typography>
-                              )}
-                              {record.imageData && (
-                                <Box sx={{ mt: 1 }}>
-                                  <Tooltip title="Ver imagen capturada">
-                                    <Button
-                                      variant="outlined"
-                                      size="small"
-                                      startIcon={<Visibility />}
-                                      onClick={() => setSelectedImage({
-                                        src: record.imageData,
-                                        guideNumber: guide.guideNumber
-                                      })}
-                                    >
-                                      Ver imagen
-                                    </Button>
-                                  </Tooltip>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  {(record.location?.latitude && record.location.latitude !== 'No disponible') && (
+                                    <Tooltip title="Abrir en Google Maps">
+                                      <IconButton
+                                        size="small"
+                                        color="primary"
+                                        onClick={() => {
+                                          const url = `https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`;
+                                          window.open(url, '_blank');
+                                        }}
+                                      >
+                                        <LocationOn />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                  {record.imageData && (
+                                    <Tooltip title="Ver imagen">
+                                      <IconButton
+                                        size="small"
+                                        color="primary"
+                                        onClick={() => setSelectedImage({
+                                          src: record.imageData,
+                                          guideNumber: guide.guideNumber
+                                        })}
+                                      >
+                                        <Image />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
                                 </Box>
-                              )}
+                              </Box>
                             </>
                           }
                         />
