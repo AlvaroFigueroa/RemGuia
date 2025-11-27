@@ -479,52 +479,56 @@ const DashboardPage = () => {
                       >
                         <ListItemText
                           primary={
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                               <Typography variant="subtitle1" fontWeight={600}>
                                 N° {guide.guideNumber || 'Sin número'}
                               </Typography>
                               <Chip
                                 size="small"
-                                icon={record.synced ? <CloudDone /> : <CloudOff />}
-                                label={record.synced ? 'Sincronizado' : 'Pendiente'}
-                                color={record.synced ? 'success' : 'warning'}
+                                label={record.destination || 'Sin destino'}
+                                sx={{ backgroundColor: 'grey.200', color: 'text.primary' }}
                               />
                             </Box>
                           }
                           secondary={
-                            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', width: '100%' }}>
-                              <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                                {formatDate(record.date || guide.date)}
-                              </Typography>
-                              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
-                                {(record.location?.latitude && record.location.latitude !== 'No disponible') && (
-                                  <Tooltip title="Abrir en Google Maps">
-                                    <IconButton
-                                      size="small"
-                                      color="primary"
-                                      onClick={() => {
-                                        const url = `https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`;
-                                        window.open(url, '_blank');
-                                      }}
-                                    >
-                                      <LocationOn />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                                {record.imageData && (
-                                  <Tooltip title="Ver imagen">
-                                    <IconButton
-                                      size="small"
-                                      color="primary"
-                                      onClick={() => setSelectedImage({
-                                        src: record.imageData,
-                                        guideNumber: guide.guideNumber
-                                      })}
-                                    >
-                                      <Image />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
+                            <Box component="span" sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Typography variant="body2"><strong>Destino:</strong> {record.destination || 'No registrado'}</Typography>
+                              <Typography variant="body2"><strong>Subdestino:</strong> {record.subDestination || 'No registrado'}</Typography>
+                              <Typography variant="body2"><strong>Ubicación:</strong> {record.location?.alias || record.location?.name || 'No registrada'}</Typography>
+                              <Box sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                                <Typography component="span" variant="body2" color="text.secondary">
+                                  {formatDate(record.date || guide.date)}
+                                </Typography>
+                                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                                  {(record.location?.latitude && record.location.latitude !== 'No disponible') && (
+                                    <Tooltip title="Abrir en Google Maps">
+                                      <IconButton
+                                        size="small"
+                                        color="primary"
+                                        onClick={() => {
+                                          const url = `https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`;
+                                          window.open(url, '_blank');
+                                        }}
+                                      >
+                                        <LocationOn />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                  {record.imageData && (
+                                    <Tooltip title="Ver imagen">
+                                      <IconButton
+                                        size="small"
+                                        color="primary"
+                                        onClick={() => setSelectedImage({
+                                          src: record.imageData,
+                                          guideNumber: guide.guideNumber
+                                        })}
+                                      >
+                                        <Image />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                </Box>
                               </Box>
                             </Box>
                           }

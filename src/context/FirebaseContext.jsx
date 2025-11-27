@@ -141,12 +141,17 @@ export const FirebaseProvider = ({ children }) => {
         throw new Error('Usuario no autenticado');
       }
 
-      const q = query(
-        collection(db, 'guideRecords'),
-        where('userId', '==', userId)
-      );
+      let queryRef;
+      if (currentUserProfile?.role === 'admin') {
+        queryRef = collection(db, 'guideRecords');
+      } else {
+        queryRef = query(
+          collection(db, 'guideRecords'),
+          where('userId', '==', userId)
+        );
+      }
 
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await getDocs(queryRef);
       const records = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
