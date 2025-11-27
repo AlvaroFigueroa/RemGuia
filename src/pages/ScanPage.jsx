@@ -3,7 +3,7 @@ import {
   Container, Typography, Box, Button, Paper, 
   TextField, CircularProgress, Alert, Stack,
   IconButton, Dialog, DialogTitle, DialogContent,
-  DialogContentText, DialogActions
+  DialogContentText, DialogActions, MenuItem
 } from '@mui/material';
 import { CameraAlt, Save, FlipCameraIos, Refresh } from '../components/AppIcons';
 import Webcam from 'react-webcam';
@@ -15,9 +15,11 @@ const ScanPage = () => {
   const { saveGuideRecord, currentUser } = useFirebase();
   const [image, setImage] = useState(null);
   const [extractedGuide, setExtractedGuide] = useState('');
+  const [destination, setDestination] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
+  const [errorVisible, setErrorVisible] = useState(false);
   const [success, setSuccess] = useState('');
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [location, setLocation] = useState(null);
@@ -44,6 +46,11 @@ const ScanPage = () => {
       };
       return [entry, ...prev].slice(0, 40);
     });
+  }, []);
+
+  const updateError = useCallback((message = '', { visible = false } = {}) => {
+    setError(message);
+    setErrorVisible(visible && Boolean(message));
   }, []);
 
   const enforceLandscape = useCallback(async (imageSrc) => {
@@ -133,7 +140,7 @@ const ScanPage = () => {
         console.log('Tesseract.js versión:', Tesseract.version);
       } catch (err) {
         console.error('Error al precargar Tesseract:', err);
-        setError('Error al inicializar el reconocimiento de texto');
+        updateError('Error al inicializar el reconocimiento de texto', { visible: true });
       }
     };
     
@@ -142,7 +149,7 @@ const ScanPage = () => {
     return () => {
       // No hay worker que terminar
     };
-  }, [tesseractConfig]);
+  }, [tesseractConfig, updateError]);
 
   useEffect(() => {
     appendDebugLog(tesseractConfig.mode === 'cdn'
@@ -166,15 +173,15 @@ const ScanPage = () => {
     };
   }, []);
 
-  const processImage = useCallback(async (imageSrc) => {
+  const processImage = useCallback(async (imageSrc, { showErrors = false } = {}) => {
     if (!imageSrc) {
-      setError('No se pudo capturar la imagen');
+      updateError('No se pudo capturar la imagen', { visible: showErrors });
       appendDebugLog('OCR cancelado: imagen vacía');
       return null;
     }
 
     setIsProcessing(true);
-    setError('');
+    updateError('', { visible: false });
     setOcrProgress(0);
     ocrProgressLogRef.current = 0;
     appendDebugLog('OCR iniciado');
@@ -257,7 +264,7 @@ const ScanPage = () => {
       return { guideNumber, confident, rawText: text };
     } catch (error) {
       console.error('Error al procesar la imagen:', error);
-      setError('Error al procesar la imagen');
+      updateError('Error al procesar la imagen', { visible: showErrors });
       appendDebugLog(`OCR error: ${error.message || error}`);
       return null;
     } finally {
@@ -265,12 +272,12 @@ const ScanPage = () => {
       appendDebugLog(`OCR finalizado en ${elapsed} ms`);
       setIsProcessing(false);
     }
-  }, [appendDebugLog, tesseractConfig]);
+  }, [appendDebugLog, tesseractConfig, updateError]);
 
   const processCapturedFrame = useCallback(async (imageSrc, fromAuto) => {
     processingFrameRef.current = true;
     try {
-      const detection = await processImage(imageSrc);
+      const detection = await processImage(imageSrc, { showErrors: !fromAuto });
 
       if (fromAuto) {
         appendDebugLog(`Texto OCR: ${detection?.rawText?.slice(0, 160) || '(sin texto)'}`);
@@ -278,7 +285,7 @@ const ScanPage = () => {
 
       if (!fromAuto) {
         setImage(imageSrc);
-        setError('');
+        updateError('', { visible: false });
         if (detection?.guideNumber) {
           setExtractedGuide(detection.guideNumber);
           appendDebugLog(`Número asignado manualmente: ${detection.guideNumber}`);
@@ -303,7 +310,7 @@ const ScanPage = () => {
         setTimeout(() => processCapturedFrame(nextImage, nextFromAuto), 0);
       }
     }
-  }, [appendDebugLog, processImage]);
+  }, [appendDebugLog, processImage, updateError]);
 
   const captureImage = useCallback(async ({ fromAuto = false } = {}) => {
     if (webcamRef.current) {
@@ -313,7 +320,7 @@ const ScanPage = () => {
       const rawImageSrc = webcamRef.current.getScreenshot();
 
       if (!rawImageSrc) {
-        setError('No se pudo capturar la imagen');
+        updateError('No se pudo capturar la imagen', { visible: !fromAuto });
         appendDebugLog('Error: getScreenshot() devolvió null');
         return;
       }
@@ -331,10 +338,10 @@ const ScanPage = () => {
 
       processCapturedFrame(imageSrc, fromAuto);
     } else {
-      setError('No se pudo acceder a la cámara');
+      updateError('No se pudo acceder a la cámara', { visible: true });
       appendDebugLog('Error: webcamRef no disponible');
     }
-  }, [appendDebugLog, enforceLandscape, processCapturedFrame]);
+  }, [appendDebugLog, enforceLandscape, processCapturedFrame, updateError]);
 
   const flipCamera = useCallback(() => {
     setFacingMode(prevMode => prevMode === 'user' ? 'environment' : 'user');
@@ -368,7 +375,7 @@ const ScanPage = () => {
   const resetScan = () => {
     setImage(null);
     setExtractedGuide('');
-    setError('');
+    updateError('', { visible: false });
     setSuccess('');
     setOcrProgress(0);
     setAutoCaptureEnabled(true);
@@ -425,12 +432,12 @@ const ScanPage = () => {
   // Función para guardar el registro
   const saveRecord = async () => {
     if (!extractedGuide) {
-      setError('No se ha extraído ningún número de guía');
+      updateError('No se ha extraído ningún número de guía', { visible: true });
       return;
     }
 
     setIsLoading(true);
-    setError('');
+    updateError('', { visible: false });
 
     let currentLocation = location;
     
@@ -448,9 +455,10 @@ const ScanPage = () => {
       const localId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
       // Crear objeto de registro
-      const record = {
+      const recordToSave = {
         localId,
         guideNumber: extractedGuide,
+        destination,
         date: new Date().toISOString(),
         location: currentLocation || { latitude: 'No disponible', longitude: 'No disponible' },
         // No guardamos la imagen completa, solo una referencia
@@ -486,7 +494,7 @@ const ScanPage = () => {
 
     } catch (error) {
       console.error('Error al guardar registro:', error);
-      setError('Error al guardar: ' + error.message);
+      updateError('Error al guardar: ' + error.message, { visible: true });
     } finally {
       setIsLoading(false);
     }
@@ -623,16 +631,35 @@ const ScanPage = () => {
         )}
 
         {(image || extractedGuide) && (
-          <Box sx={{ mb: 2 }}>
-            <TextField
-              label="Número de Guía"
-              variant="outlined"
-              fullWidth
-              value={extractedGuide}
-              onChange={(e) => setExtractedGuide(e.target.value)}
-              helperText="Puedes ingresar o editar el número manualmente"
-            />
-          </Box>
+          <>
+            <Box sx={{ mb: 2 }}>
+              <TextField
+                label="Número de Guía"
+                variant="outlined"
+                fullWidth
+                value={extractedGuide}
+                onChange={(e) => setExtractedGuide(e.target.value)}
+                helperText="Puedes ingresar o editar el número manualmente"
+              />
+            </Box>
+            <Box sx={{ mb: 2 }}>
+              <TextField
+                label="Destino"
+                select
+                fullWidth
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                helperText="Selecciona el destino de la guía"
+              >
+                <MenuItem value="">Selecciona un destino</MenuItem>
+                <MenuItem value="Santiago">Santiago</MenuItem>
+                <MenuItem value="Concepción">Concepción</MenuItem>
+                <MenuItem value="Temuco">Temuco</MenuItem>
+                <MenuItem value="Valdivia">Valdivia</MenuItem>
+                <MenuItem value="Puerto Montt">Puerto Montt</MenuItem>
+              </TextField>
+            </Box>
+          </>
         )}
 
         <Button
@@ -640,7 +667,7 @@ const ScanPage = () => {
           color="primary"
           startIcon={<Save />}
           fullWidth
-          disabled={!extractedGuide || isLoading || isProcessing}
+          disabled={!extractedGuide || !destination || isLoading || isProcessing}
           onClick={saveRecord}
         >
           {isLoading ? <CircularProgress size={24} /> : 'Guardar Registro'}
@@ -688,7 +715,7 @@ const ScanPage = () => {
         </Paper>
       )}
 
-      {error && (
+      {errorVisible && error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>

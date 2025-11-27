@@ -267,6 +267,7 @@ const HistoryPage = () => {
                               Imagen capturada:
                             </Typography>
                             <Box
+                              component="span"
                               sx={{
                                 mt: 0.5,
                                 border: '1px solid',
@@ -283,6 +284,7 @@ const HistoryPage = () => {
                               }}
                             >
                               <Box
+                                component="span"
                                 component="img"
                                 src={record.imageData}
                                 alt={`Captura de ${record.guideNumber}`}
