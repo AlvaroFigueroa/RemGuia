@@ -89,7 +89,8 @@ const DashboardPage = () => {
   const [destinoGuides, setDestinoGuides] = useState([]);
   const [differences, setDifferences] = useState({
     missingInDestino: [],
-    missingInUbicacion: []
+    missingInUbicacion: [],
+    matches: []
   });
   const [selectedImage, setSelectedImage] = useState(null);
   const [destinationsCatalog, setDestinationsCatalog] = useState([]);
@@ -194,10 +195,18 @@ const DashboardPage = () => {
 
     const missingInDestino = ubicacion.filter((guide) => !destinoSet.has(guide.guideNumber));
     const missingInUbicacion = destino.filter((guide) => !ubicacionSet.has(guide.guideNumber));
+    const matches = Array.from(
+      new Set(
+        destino
+          .filter((guide) => guide.guideNumber && ubicacionSet.has(guide.guideNumber))
+          .map((guide) => guide.guideNumber)
+      )
+    );
 
     return {
       missingInDestino,
-      missingInUbicacion
+      missingInUbicacion,
+      matches
     };
   }, []);
 
@@ -265,6 +274,7 @@ const DashboardPage = () => {
   const totalUbicacion = ubicacionGuides.length;
   const totalDestino = destinoGuides.length;
   const totalDiferencias = differences.missingInDestino.length + differences.missingInUbicacion.length;
+  const totalCoincidencias = differences.matches.length;
 
   const ubicacionOptions = useMemo(() => {
     const options = ['Todos'];
@@ -480,6 +490,31 @@ const DashboardPage = () => {
             {totalDiferencias > 0
               ? 'Revisa las listas para conocer los detalles.'
               : 'Sin diferencias detectadas en este rango.'}
+          </Typography>
+        </Paper>
+
+        <Paper
+          elevation={2}
+          sx={{
+            p: 2,
+            flex: 1,
+            minHeight: 180,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between'
+          }}
+        >
+          <Typography variant="subtitle2" color="text.secondary">
+            Coinciden
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CloudDone color="success" />
+            <Typography variant="h3" color="success.main">
+              {totalCoincidencias}
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            Guías con el mismo número en ambos orígenes.
           </Typography>
         </Paper>
       </Stack>
