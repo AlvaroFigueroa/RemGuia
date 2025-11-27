@@ -256,6 +256,12 @@ const DashboardPage = () => {
     }
   }, [currentUser, handleCompare, loadDestinationsCatalog, loadLocationsCatalog]);
 
+  useEffect(() => {
+    if (!currentUser) return;
+    const timeout = setTimeout(() => handleCompare(filters), 200);
+    return () => clearTimeout(timeout);
+  }, [filters, handleCompare, currentUser]);
+
   const totalUbicacion = ubicacionGuides.length;
   const totalDestino = destinoGuides.length;
   const totalDiferencias = differences.missingInDestino.length + differences.missingInUbicacion.length;
@@ -396,26 +402,6 @@ const DashboardPage = () => {
               </TextField>
             </Grid>
           )}
-          <Grid item xs={12}>
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={1.5}
-              justifyContent="flex-end"
-              alignItems={{ xs: 'stretch', sm: 'center' }}
-            >
-              <Typography variant="body2" color="text.secondary">
-                Ajusta los filtros y presiona actualizar.
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<CloudSync />}
-                onClick={() => handleCompare(filters)}
-                disabled={isComparing}
-              >
-                {isComparing ? 'Actualizando...' : 'Actualizar panel'}
-              </Button>
-            </Stack>
-          </Grid>
         </Grid>
       </Paper>
 
@@ -498,9 +484,9 @@ const DashboardPage = () => {
         </Paper>
       </Stack>
 
-      <Grid container spacing={3} alignItems="stretch">
-        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-          <Paper elevation={3} sx={{ p: 2 }}>
+      <Grid container spacing={3} alignItems="stretch" justifyContent="center">
+        <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="h6">SQL - Guías por Ubicación</Typography>
               <Chip label={`${ubicacionGuides.length} guías`} color="default" />
@@ -551,8 +537,8 @@ const DashboardPage = () => {
             )}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-          <Paper elevation={3} sx={{ p: 2, width: '100%' }}>
+        <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
+          <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="h6">Firestore - Guías en destino</Typography>
               <Chip label={`${destinoGuides.length} guías`} color="primary" icon={<CloudDone />} />
