@@ -44,10 +44,24 @@ const normalizeGuide = (guide, fallback = {}) => {
     ''
   ).trim();
 
+  const subDestino =
+    guide?.subDestination ??
+    guide?.subDest ??
+    guide?.subdestino ??
+    guide?.SubDestino ??
+    guide?.sub_destino ??
+    guide?.SubDesGDSur ??
+    guide?.SubDesGDNorte ??
+    guide?.subD413884 ??
+    guide?.subD416335 ??
+    fallback.subDestino ??
+    '';
+
   return {
     guideNumber,
     ubicacion: guide?.ubicacion ?? guide?.location ?? fallback.ubicacion ?? 'No definida',
     destino: guide?.destino ?? guide?.destination ?? fallback.destino ?? 'No definido',
+    subDestino,
     date: guide?.date ?? guide?.fecha ?? guide?.createdAt ?? null,
     rawRecord: guide
   };
@@ -66,7 +80,8 @@ const DashboardPage = () => {
     startDate: isoDate(sevenDaysAgo),
     endDate: isoDate(today),
     ubicacion: 'Todos',
-    destino: 'Todos'
+    destino: 'Todos',
+    subDestino: 'Todos'
   });
   const [isComparing, setIsComparing] = useState(false);
   const [error, setError] = useState('');
@@ -127,7 +142,9 @@ const DashboardPage = () => {
         || guide.destino?.toLowerCase()?.includes(range.destino.toLowerCase());
       const ubicacionMatches = range.ubicacion === 'Todos'
         || guide.ubicacion?.toLowerCase()?.includes(range.ubicacion.toLowerCase());
-      return destinoMatches && ubicacionMatches;
+      const subDestinoMatches = range.subDestino === 'Todos'
+        || guide.subDestino?.toLowerCase()?.includes(range.subDestino.toLowerCase());
+      return destinoMatches && ubicacionMatches && subDestinoMatches;
     });
 
     return filtered;
@@ -139,6 +156,7 @@ const DashboardPage = () => {
     if (range.endDate) params.append('endDate', range.endDate);
     if (range.ubicacion && range.ubicacion !== 'Todos') params.append('ubicacion', range.ubicacion);
     if (range.destino && range.destino !== 'Todos') params.append('destino', range.destino);
+    if (range.subDestino && range.subDestino !== 'Todos') params.append('subdestino', range.subDestino);
 
     const response = await fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${params.toString()}`);
     if (!response.ok) {
@@ -152,7 +170,17 @@ const DashboardPage = () => {
 
     const records = Array.isArray(data?.data) ? data.data : [];
 
-    return records.map((record) => normalizeGuide(record));
+    const normalized = records.map((record) => normalizeGuide(record));
+
+    return normalized.filter((guide) => {
+      const destinoMatches = range.destino === 'Todos'
+        || guide.destino?.toLowerCase()?.includes(range.destino.toLowerCase());
+      const ubicacionMatches = range.ubicacion === 'Todos'
+        || guide.ubicacion?.toLowerCase()?.includes(range.ubicacion.toLowerCase());
+      const subDestinoMatches = range.subDestino === 'Todos'
+        || guide.subDestino?.toLowerCase()?.includes(range.subDestino.toLowerCase());
+      return destinoMatches && ubicacionMatches && subDestinoMatches;
+    });
   }, [transporteApiBaseUrl]);
 
   const compareGuides = useCallback((ubicacion, destino) => {
@@ -235,12 +263,34 @@ const DashboardPage = () => {
   }, [locationsCatalog]);
 
   const destinoOptions = useMemo(() => {
-    const options = ['Todos'];
-    destinationsCatalog.forEach((destination) => {
-      if (destination.name) options.push(destination.name);
-    });
-    return options;
+    const names = destinationsCatalog
+      .map((destination) => destination.name)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    return ['Todos', ...names];
   }, [destinationsCatalog]);
+
+  const selectedDestination = useMemo(
+    () => destinationsCatalog.find((dest) => dest.name === filters.destino),
+    [destinationsCatalog, filters.destino]
+  );
+
+  const subDestinoOptions = useMemo(() => {
+    const base = ['Todos'];
+    if (!selectedDestination?.subDestinations?.length) return base;
+    const sorted = [...selectedDestination.subDestinations].sort((a, b) =>
+      a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
+    return [...base, ...sorted];
+  }, [selectedDestination]);
+
+  const hasSubDestinoFilter = subDestinoOptions.length > 1;
+
+  useEffect(() => {
+    if (!hasSubDestinoFilter && filters.subDestino !== 'Todos') {
+      setFilters((prev) => ({ ...prev, subDestino: 'Todos' }));
+    }
+  }, [hasSubDestinoFilter, filters.subDestino]);
 
   return (
     <Container maxWidth="md" sx={{ pt: 3, pb: 10 }}>
@@ -320,6 +370,26 @@ const DashboardPage = () => {
               ))}
             </TextField>
           </Grid>
+          {hasSubDestinoFilter && (
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Subdestino"
+                select
+                fullWidth
+                value={filters.subDestino}
+                onChange={(e) => handleFilterChange('subDestino', e.target.value)}
+                SelectProps={{
+                  MenuProps: { disableScrollLock: true }
+                }}
+              >
+                {subDestinoOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+          )}
         </Grid>
       </Paper>
 
@@ -426,6 +496,8 @@ const DashboardPage = () => {
                       }}
                     >
                       <ListItemText
+                        primaryTypographyProps={{ component: 'div' }}
+                        secondaryTypographyProps={{ component: 'div' }}
                         primary={
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="subtitle1" fontWeight={600}>
@@ -478,6 +550,8 @@ const DashboardPage = () => {
                         }}
                       >
                         <ListItemText
+                          primaryTypographyProps={{ component: 'div' }}
+                          secondaryTypographyProps={{ component: 'div' }}
                           primary={
                             <Box component="div" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                               <Typography variant="subtitle1" fontWeight={600} component="span">

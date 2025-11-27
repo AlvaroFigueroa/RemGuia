@@ -39,7 +39,7 @@ while ($row = $result->fetch_assoc()) {
         ? trim($row['destino'])
         : 'Destino sin nombre';
 
-    $destinos[] = [
+    $destinos[$destinoNombre] = [
         'id' => $autoincrement++,
         'name' => $destinoNombre,
         'subDestinations' => []
@@ -47,6 +47,70 @@ while ($row = $result->fetch_assoc()) {
 }
 
 $result->free();
+
+$subQuery = 'SELECT SubDesGDSur, SubDesGDNorte, subD413884, subD416335 FROM destinos';
+$subResult = $mysqli->query($subQuery);
+
+if ($subResult) {
+    $subDestinosMap = [
+        'Global Diguillin Sur' => [],
+        'Global Diguillin Norte' => [],
+        'SAFI 413884' => [],
+        'SAFI 416335' => []
+    ];
+
+    while ($row = $subResult->fetch_assoc()) {
+        $sur = isset($row['SubDesGDSur']) ? trim($row['SubDesGDSur']) : '';
+        $norte = isset($row['SubDesGDNorte']) ? trim($row['SubDesGDNorte']) : '';
+        $safi413884 = isset($row['subD413884']) ? trim($row['subD413884']) : '';
+        $safi416335 = isset($row['subD416335']) ? trim($row['subD416335']) : '';
+
+        if ($sur !== '') {
+            $subDestinosMap['Global Diguillin Sur'][] = $sur;
+        }
+        if ($norte !== '') {
+            $subDestinosMap['Global Diguillin Norte'][] = $norte;
+        }
+        if ($safi413884 !== '') {
+            $subDestinosMap['SAFI 413884'][] = $safi413884;
+        }
+        if ($safi416335 !== '') {
+            $subDestinosMap['SAFI 416335'][] = $safi416335;
+        }
+    }
+
+    $subResult->free();
+
+    $ensureDestino = function ($name) use (&$destinos, &$autoincrement) {
+        if (!isset($destinos[$name])) {
+            $destinos[$name] = [
+                'id' => $autoincrement++,
+                'name' => $name,
+                'subDestinations' => []
+            ];
+        }
+    };
+
+    $mergeValues = function ($destName, $values) use (&$destinos, $ensureDestino) {
+        if (empty($values)) {
+            return;
+        }
+        $ensureDestino($destName);
+        $destinos[$destName]['subDestinations'] = array_values(array_unique(array_merge(
+            $destinos[$destName]['subDestinations'],
+            $values
+        )));
+        sort($destinos[$destName]['subDestinations']);
+    };
+
+    $mergeValues('Global Diguillin', array_merge(
+        $subDestinosMap['Global Diguillin Sur'],
+        $subDestinosMap['Global Diguillin Norte']
+    ));
+    $mergeValues('SAFI 413884', $subDestinosMap['SAFI 413884']);
+    $mergeValues('SAFI 416335', $subDestinosMap['SAFI 416335']);
+}
+
 $mysqli->close();
 
 respond([
