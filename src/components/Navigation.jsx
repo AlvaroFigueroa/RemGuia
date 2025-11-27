@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BottomNavigation, BottomNavigationAction, Paper } from '@mui/material';
-import { Dashboard, QrCodeScanner, History, Settings, Users } from './AppIcons';
+import { Dashboard, QrCodeScanner, History, Settings, Users, LocationOn } from './AppIcons';
 
 const Navigation = () => {
   const navigate = useNavigate();
@@ -13,7 +13,8 @@ const Navigation = () => {
     if (path.includes('/scan')) return 1;
     if (path.includes('/history')) return 2;
     if (path.includes('/users')) return 3;
-    if (path.includes('/config')) return 4;
+    if (path.includes('/destinations')) return 4;
+    if (path.includes('/config')) return 5;
     return 0;
   };
   
@@ -35,6 +36,9 @@ const Navigation = () => {
         navigate('/users');
         break;
       case 4:
+        navigate('/destinations');
+        break;
+      case 5:
         navigate('/config');
         break;
       default:
@@ -53,6 +57,7 @@ const Navigation = () => {
         <BottomNavigationAction label="Escanear" icon={<QrCodeScanner />} />
         <BottomNavigationAction label="Registros" icon={<History />} />
         <BottomNavigationAction label="Usuarios" icon={<Users />} />
+        <BottomNavigationAction label="Destinos" icon={<LocationOn />} />
         <BottomNavigationAction label="Configuración" icon={<Settings />} />
       </BottomNavigation>
     </Paper>

@@ -338,6 +338,89 @@ export const FirebaseProvider = ({ children }) => {
     await deleteDoc(doc(db, 'users', uid));
   };
 
+  // Catálogo de destinos y ubicaciones
+  const mapTimestamp = (value) => (value?.toDate ? value.toDate() : value || null);
+
+  const getDestinationsCatalog = async () => {
+    const snapshot = await getDocs(collection(db, 'destinationsCatalog'));
+    return snapshot.docs
+      .map((docItem) => {
+        const data = docItem.data();
+        return {
+          id: docItem.id,
+          name: data.name || '',
+          subDestinations: Array.isArray(data.subDestinations) ? data.subDestinations : [],
+          createdAt: mapTimestamp(data.createdAt),
+          updatedAt: mapTimestamp(data.updatedAt)
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+  };
+
+  const createDestinationCatalog = async ({ name }) => {
+    const trimmedName = name?.trim();
+    if (!trimmedName) throw new Error('El nombre del destino es obligatorio');
+    await addDoc(collection(db, 'destinationsCatalog'), {
+      name: trimmedName,
+      subDestinations: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  };
+
+  const updateDestinationCatalog = async (id, payload = {}) => {
+    if (!id) throw new Error('ID de destino inválido');
+    const docRef = doc(db, 'destinationsCatalog', id);
+    await updateDoc(docRef, {
+      ...payload,
+      updatedAt: serverTimestamp()
+    });
+  };
+
+  const deleteDestinationCatalog = async (id) => {
+    if (!id) throw new Error('ID de destino inválido');
+    await deleteDoc(doc(db, 'destinationsCatalog', id));
+  };
+
+  const getLocationsCatalog = async () => {
+    const snapshot = await getDocs(collection(db, 'locationsCatalog'));
+    return snapshot.docs
+      .map((docItem) => {
+        const data = docItem.data();
+        return {
+          id: docItem.id,
+          name: data.name || '',
+          createdAt: mapTimestamp(data.createdAt),
+          updatedAt: mapTimestamp(data.updatedAt)
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+  };
+
+  const createLocationCatalog = async ({ name }) => {
+    const trimmedName = name?.trim();
+    if (!trimmedName) throw new Error('El nombre de la ubicación es obligatorio');
+    await addDoc(collection(db, 'locationsCatalog'), {
+      name: trimmedName,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  };
+
+  const updateLocationCatalog = async (id, payload = {}) => {
+    if (!id) throw new Error('ID de ubicación inválido');
+    const docRef = doc(db, 'locationsCatalog', id);
+    await updateDoc(docRef, {
+      ...payload,
+      updatedAt: serverTimestamp()
+    });
+  };
+
+  const deleteLocationCatalog = async (id) => {
+    if (!id) throw new Error('ID de ubicación inválido');
+    await deleteDoc(doc(db, 'locationsCatalog', id));
+  };
+
   const createManagedUser = async ({ name, email, password, role, location = '', destinations = [] }) => {
     if (!email || !password) {
       throw new Error('Correo y contraseña son obligatorios');
@@ -359,15 +442,22 @@ export const FirebaseProvider = ({ children }) => {
     logout,
     saveGuideRecord,
     getGuideRecords,
+    uploadPDF,
+    syncLocalRecords,
+    syncPendingRecords,
     getAllUsers,
     createUserRecord,
     updateUserAccess,
     deleteUserRecord,
-    createManagedUser,
-    uploadPDF,
-    syncLocalRecords,
-    syncPendingRecords,
-    loading
+    getDestinationsCatalog,
+    createDestinationCatalog,
+    updateDestinationCatalog,
+    deleteDestinationCatalog,
+    getLocationsCatalog,
+    createLocationCatalog,
+    updateLocationCatalog,
+    deleteLocationCatalog,
+    createManagedUser
   };
 
   return (
