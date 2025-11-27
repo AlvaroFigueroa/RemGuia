@@ -83,7 +83,8 @@ const DashboardPage = () => {
   const [catalogLoading, setCatalogLoading] = useState({ destinations: false, locations: false });
 
   const transporteApiBaseUrl = useMemo(() => {
-    const base = import.meta.env.VITE_TRANSPORTE_API || '';
+    const envBase = (import.meta.env.VITE_TRANSPORTE_API || '').trim();
+    const base = envBase.length > 0 ? envBase : 'https://guia.codecland.com/api';
     return base.endsWith('/') ? base.slice(0, -1) : base;
   }, []);
 
@@ -133,24 +134,23 @@ const DashboardPage = () => {
   }, [currentUser, getGuideRecords, filterByRange]);
 
   const fetchUbicacionGuides = useCallback(async (range) => {
-    if (!transporteApiBaseUrl) {
-      console.warn('VITE_TRANSPORTE_API no está configurado.');
-      return [];
-    }
-
     const params = new URLSearchParams();
     if (range.startDate) params.append('startDate', range.startDate);
     if (range.endDate) params.append('endDate', range.endDate);
     if (range.ubicacion && range.ubicacion !== 'Todos') params.append('ubicacion', range.ubicacion);
     if (range.destino && range.destino !== 'Todos') params.append('destino', range.destino);
 
-    const response = await fetch(`${transporteApiBaseUrl}/transporte?${params.toString()}`);
+    const response = await fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${params.toString()}`);
     if (!response.ok) {
       throw new Error('No se pudieron obtener las guías de ubicación (SQL).');
     }
 
     const data = await response.json();
-    const records = Array.isArray(data?.records) ? data.records : Array.isArray(data) ? data : [];
+    if (!data?.success) {
+      throw new Error(data?.message || 'Respuesta inválida desde la API SQL.');
+    }
+
+    const records = Array.isArray(data?.data) ? data.data : [];
 
     return records.map((record) => normalizeGuide(record));
   }, [transporteApiBaseUrl]);
