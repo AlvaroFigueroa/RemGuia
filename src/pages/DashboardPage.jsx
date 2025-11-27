@@ -254,6 +254,9 @@ const DashboardPage = () => {
               fullWidth
               value={filters.ubicacion}
               onChange={(e) => handleFilterChange('ubicacion', e.target.value)}
+              SelectProps={{
+                MenuProps: { disableScrollLock: true }
+              }}
             >
               {ubicacionOptions.map((option) => (
                 <MenuItem key={option} value={option}>
@@ -269,6 +272,9 @@ const DashboardPage = () => {
               fullWidth
               value={filters.destino}
               onChange={(e) => handleFilterChange('destino', e.target.value)}
+              SelectProps={{
+                MenuProps: { disableScrollLock: true }
+              }}
             >
               {destinoOptions.map((option) => (
                 <MenuItem key={option} value={option}>
