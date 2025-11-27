@@ -294,9 +294,9 @@ const DashboardPage = () => {
         <Paper
           elevation={2}
           sx={{
-            p: 3,
+            p: 2,
             flex: 1,
-            minHeight: 220,
+            minHeight: 180,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between'
@@ -317,9 +317,9 @@ const DashboardPage = () => {
         <Paper
           elevation={2}
           sx={{
-            p: 3,
+            p: 2,
             flex: 1,
-            minHeight: 220,
+            minHeight: 180,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between'
@@ -340,9 +340,9 @@ const DashboardPage = () => {
         <Paper
           elevation={2}
           sx={{
-            p: 3,
+            p: 2,
             flex: 1,
-            minHeight: 220,
+            minHeight: 180,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between'
