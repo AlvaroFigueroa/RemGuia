@@ -22,9 +22,11 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
-  Tooltip
+  Tooltip,
+  Divider
 } from '@mui/material';
 import { useFirebase } from '../context/FirebaseContext';
+import { DESTINATIONS, LOCATIONS } from '../constants/destinations';
 import { Refresh, Edit, Delete } from '../components/AppIcons';
 
 const roleColors = {
@@ -43,7 +45,7 @@ const formatDate = (value) => {
 const DEFAULT_ROLES = ['usuario', 'admin', 'supervisor'];
 
 const UsersManagementPage = () => {
-  const { getAllUsers, createManagedUser, updateUserRole, deleteUserRecord } = useFirebase();
+  const { getAllUsers, createManagedUser, updateUserAccess, deleteUserRecord } = useFirebase();
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,7 +53,15 @@ const UsersManagementPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [dialogState, setDialogState] = useState({ type: null, user: null });
-  const [formValues, setFormValues] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'usuario' });
+  const [formValues, setFormValues] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    role: 'usuario',
+    location: '',
+    destinations: []
+  });
   const [dialogLoading, setDialogLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
 
@@ -101,25 +111,57 @@ const UsersManagementPage = () => {
 
   const closeDialog = () => {
     setDialogState({ type: null, user: null });
-    setFormValues({ name: '', email: '', password: '', confirmPassword: '', role: 'usuario' });
+    setFormValues({
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      role: 'usuario',
+      location: '',
+      destinations: []
+    });
     setDialogLoading(false);
   };
 
   const openCreateDialog = () => {
     setDialogState({ type: 'create', user: null });
-    setFormValues({ name: '', email: '', password: '', confirmPassword: '', role: 'usuario' });
+    setFormValues({
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      role: 'usuario',
+      location: '',
+      destinations: []
+    });
   };
 
   const openEditDialog = (user) => {
     setDialogState({ type: 'edit', user });
-    setFormValues({ name: user.name || '', email: user.email, password: '', confirmPassword: '', role: user.role || 'usuario' });
+    setFormValues({
+      name: user.name || '',
+      email: user.email,
+      password: '',
+      confirmPassword: '',
+      role: user.role || 'usuario',
+      location: user.location || '',
+      destinations:
+        user.destinations && Array.isArray(user.destinations) && user.destinations.length > 0
+          ? user.destinations.map((entry) => entry.destination).filter(Boolean)
+          : []
+    });
   };
 
   const openDeleteDialog = (user) => {
     setDialogState({ type: 'delete', user });
   };
 
+  const normalizedDestinations = useCallback((entries = []) => {
+    return entries.filter(Boolean).map((destination) => ({ destination }));
+  }, []);
+
   const handleDialogSubmit = async () => {
+    const destinationsPayload = normalizedDestinations(formValues.destinations);
     try {
       setDialogLoading(true);
       if (dialogState.type === 'create') {
@@ -137,12 +179,18 @@ const UsersManagementPage = () => {
           name: formValues.name.trim(),
           email: formValues.email.trim(),
           password: formValues.password,
-          role: formValues.role
+          role: formValues.role,
+          location: formValues.location,
+          destinations: destinationsPayload
         });
         setFeedback('Usuario creado correctamente.');
       } else if (dialogState.type === 'edit' && dialogState.user) {
-        await updateUserRole(dialogState.user.id, formValues.role);
-        setFeedback('Rol actualizado.');
+        await updateUserAccess(dialogState.user.id, {
+          role: formValues.role,
+          location: formValues.location,
+          destinations: destinationsPayload
+        });
+        setFeedback('Permisos actualizados.');
       } else if (dialogState.type === 'delete' && dialogState.user) {
         await deleteUserRecord(dialogState.user.id);
         setFeedback('Usuario eliminado.');
@@ -238,6 +286,8 @@ const UsersManagementPage = () => {
                   <TableCell>Nombre</TableCell>
                   <TableCell>Correo</TableCell>
                   <TableCell>Rol</TableCell>
+                  <TableCell>Ubicación</TableCell>
+                  <TableCell>Destinos asignados</TableCell>
                   <TableCell>Creado</TableCell>
                   <TableCell>Actualizado</TableCell>
                 </TableRow>
@@ -245,7 +295,7 @@ const UsersManagementPage = () => {
               <TableBody>
                 {filteredUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} align="center">
+                    <TableCell colSpan={7} align="center">
                       No se encontraron usuarios con los filtros actuales.
                     </TableCell>
                   </TableRow>
@@ -263,6 +313,16 @@ const UsersManagementPage = () => {
                           color={roleColors[user.role] || 'default'}
                           size="small"
                         />
+                      </TableCell>
+                      <TableCell>{user.location || '—'}</TableCell>
+                      <TableCell>
+                        {Array.isArray(user.destinations) && user.destinations.length > 0
+                          ? user.destinations.map((entry, idx) => (
+                              <Typography key={`${entry.destination}-${idx}`} component="span" variant="body2" display="block">
+                                {entry.destination || '—'}
+                              </Typography>
+                            ))
+                          : '—'}
                       </TableCell>
                       <TableCell>{formatDate(user.createdAt)}</TableCell>
                       <TableCell>
@@ -336,6 +396,46 @@ const UsersManagementPage = () => {
               </MenuItem>
             ))}
           </TextField>
+          <TextField
+            label="Ubicación"
+            select
+            value={formValues.location}
+            onChange={(e) => setFormValues((prev) => ({ ...prev, location: e.target.value }))}
+          >
+            <MenuItem value="">Sin ubicación</MenuItem>
+            {LOCATIONS.map((location) => (
+              <MenuItem key={location.value} value={location.value}>
+                {location.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Divider sx={{ my: 1 }} />
+          <TextField
+            label="Destinos asignados"
+            select
+            value={formValues.destinations}
+            onChange={(e) =>
+              setFormValues((prev) => ({
+                ...prev,
+                destinations: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value
+              }))
+            }
+            SelectProps={{
+              multiple: true,
+              renderValue: (selected) =>
+                selected.length === 0
+                  ? 'Sin destinos'
+                  : selected
+                      .map((value) => DESTINATIONS.find((d) => d.value === value)?.label || value)
+                      .join(', ')
+            }}
+          >
+            {DESTINATIONS.map((destination) => (
+              <MenuItem key={destination.value} value={destination.value}>
+                {destination.label}
+              </MenuItem>
+            ))}
+          </TextField>
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog} disabled={dialogLoading}>Cancelar</Button>
@@ -345,9 +445,9 @@ const UsersManagementPage = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={dialogState.type === 'edit'} onClose={closeDialog} fullWidth maxWidth="xs">
-        <DialogTitle>Editar rol</DialogTitle>
-        <DialogContent>
+      <Dialog open={dialogState.type === 'edit'} onClose={closeDialog} fullWidth maxWidth="sm">
+        <DialogTitle>Editar permisos</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {dialogState.user?.email}
           </Typography>
@@ -361,6 +461,48 @@ const UsersManagementPage = () => {
             {roleOptions.filter((role) => role !== 'all').map((role) => (
               <MenuItem key={role} value={role}>
                 {role}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="Ubicación"
+            select
+            fullWidth
+            value={formValues.location}
+            onChange={(e) => setFormValues((prev) => ({ ...prev, location: e.target.value }))}
+          >
+            <MenuItem value="">Sin ubicación</MenuItem>
+            {LOCATIONS.map((location) => (
+              <MenuItem key={location.value} value={location.value}>
+                {location.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Divider sx={{ my: 1 }} />
+          <TextField
+            label="Destinos asignados"
+            select
+            fullWidth
+            value={formValues.destinations}
+            onChange={(e) =>
+              setFormValues((prev) => ({
+                ...prev,
+                destinations: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value
+              }))
+            }
+            SelectProps={{
+              multiple: true,
+              renderValue: (selected) =>
+                selected.length === 0
+                  ? 'Sin destinos'
+                  : selected
+                      .map((value) => DESTINATIONS.find((d) => d.value === value)?.label || value)
+                      .join(', ')
+            }}
+          >
+            {DESTINATIONS.map((destination) => (
+              <MenuItem key={destination.value} value={destination.value}>
+                {destination.label}
               </MenuItem>
             ))}
           </TextField>

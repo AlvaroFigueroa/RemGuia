@@ -289,6 +289,8 @@ export const FirebaseProvider = ({ children }) => {
           name: data.name || '',
           email: data.email || '',
           role: data.role || 'usuario',
+          location: data.location || '',
+          destinations: Array.isArray(data.destinations) ? data.destinations : [],
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt || null,
           updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : data.updatedAt || null
         };
@@ -303,7 +305,7 @@ export const FirebaseProvider = ({ children }) => {
     }
   };
 
-  const createUserRecord = async ({ uid, email, role, name }) => {
+  const createUserRecord = async ({ uid, email, role, name, location = '', destinations = [] }) => {
     if (!uid || !email) {
       throw new Error('UID y correo son obligatorios');
     }
@@ -312,18 +314,23 @@ export const FirebaseProvider = ({ children }) => {
       name: name || '',
       email,
       role: role || 'usuario',
+      location,
+      destinations,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }, { merge: true });
   };
 
-  const updateUserRole = async (uid, role) => {
+  const updateUserAccess = async (uid, { role, location, destinations }) => {
     if (!uid) throw new Error('UID inválido');
     const userDocRef = doc(db, 'users', uid);
-    await updateDoc(userDocRef, {
-      role,
+    const payload = {
       updatedAt: serverTimestamp()
-    });
+    };
+    if (typeof role !== 'undefined') payload.role = role;
+    if (typeof location !== 'undefined') payload.location = location;
+    if (typeof destinations !== 'undefined') payload.destinations = destinations;
+    await updateDoc(userDocRef, payload);
   };
 
   const deleteUserRecord = async (uid) => {
@@ -331,7 +338,7 @@ export const FirebaseProvider = ({ children }) => {
     await deleteDoc(doc(db, 'users', uid));
   };
 
-  const createManagedUser = async ({ name, email, password, role }) => {
+  const createManagedUser = async ({ name, email, password, role, location = '', destinations = [] }) => {
     if (!email || !password) {
       throw new Error('Correo y contraseña son obligatorios');
     }
@@ -340,7 +347,7 @@ export const FirebaseProvider = ({ children }) => {
     }
     const userCredential = await createUserWithEmailAndPassword(adminAuth, email, password);
     const uid = userCredential.user.uid;
-    await createUserRecord({ uid, email, role, name });
+    await createUserRecord({ uid, email, role, name, location, destinations });
     return uid;
   };
 
@@ -354,7 +361,7 @@ export const FirebaseProvider = ({ children }) => {
     getGuideRecords,
     getAllUsers,
     createUserRecord,
-    updateUserRole,
+    updateUserAccess,
     deleteUserRecord,
     createManagedUser,
     uploadPDF,

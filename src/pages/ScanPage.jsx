@@ -10,34 +10,7 @@ import Webcam from 'react-webcam';
 // Importamos directamente Tesseract en lugar de solo createWorker
 import Tesseract from 'tesseract.js';
 import { useFirebase } from '../context/FirebaseContext';
-
-const DESTINATIONS = [
-  {
-    value: 'Santiago',
-    label: 'Santiago',
-    subDestinations: ['Centro', 'Independencia', 'Maipú', 'Puente Alto']
-  },
-  {
-    value: 'Concepción',
-    label: 'Concepción',
-    subDestinations: ['Los Ángeles', 'Coronel', 'Talcahuano']
-  },
-  {
-    value: 'Temuco',
-    label: 'Temuco',
-    subDestinations: ['Padre Las Casas', 'Victoria']
-  },
-  {
-    value: 'Valdivia',
-    label: 'Valdivia',
-    subDestinations: ['Paillaco', 'La Unión']
-  },
-  {
-    value: 'Puerto Montt',
-    label: 'Puerto Montt',
-    subDestinations: ['Osorno', 'Puerto Varas']
-  }
-];
+import { DESTINATIONS } from '../constants/destinations';
 
 const ScanPage = () => {
   const { saveGuideRecord, currentUser } = useFirebase();
