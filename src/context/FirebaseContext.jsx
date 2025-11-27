@@ -33,6 +33,8 @@ export const useFirebase = () => useContext(FirebaseContext);
 export const FirebaseProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [currentUserProfile, setCurrentUserProfile] = useState(null);
   const isSyncingRef = useRef(false);
 
   // Escuchar cambios en el estado de autenticación
@@ -44,6 +46,34 @@ export const FirebaseProvider = ({ children }) => {
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setCurrentUserProfile(null);
+      setProfileLoading(false);
+      return;
+    }
+
+    const fetchProfile = async () => {
+      setProfileLoading(true);
+      try {
+        const docRef = doc(db, 'users', currentUser.uid);
+        const snapshot = await getDoc(docRef);
+        if (snapshot.exists()) {
+          setCurrentUserProfile({ id: snapshot.id, ...snapshot.data() });
+        } else {
+          setCurrentUserProfile({ id: currentUser.uid, email: currentUser.email, role: 'usuario' });
+        }
+      } catch (error) {
+        console.error('Error al cargar el perfil del usuario:', error);
+        setCurrentUserProfile({ id: currentUser.uid, email: currentUser.email, role: 'usuario' });
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [currentUser]);
 
   // Funciones de autenticación
   const login = (email, password) => {
@@ -436,6 +466,8 @@ export const FirebaseProvider = ({ children }) => {
 
   const value = {
     currentUser,
+    currentUserProfile,
+    isAdmin: currentUserProfile?.role === 'admin',
     login,
     loginWithGoogle,
     signup,
@@ -457,7 +489,9 @@ export const FirebaseProvider = ({ children }) => {
     createLocationCatalog,
     updateLocationCatalog,
     deleteLocationCatalog,
-    createManagedUser
+    createManagedUser,
+    loading,
+    profileLoading
   };
 
   return (

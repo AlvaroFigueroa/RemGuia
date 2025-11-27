@@ -40,7 +40,7 @@ const theme = createTheme({
 
 // Componente de enrutamiento protegido con Firebase
 const AppRoutes = () => {
-  const { currentUser, loading, logout } = useFirebase();
+  const { currentUser, loading, logout, isAdmin, profileLoading } = useFirebase();
   const [isReady, setIsReady] = useState(false);
 
   const handleLogout = async () => {
@@ -69,7 +69,7 @@ const AppRoutes = () => {
     checkLocalSession();
   }, [currentUser, loading]);
   
-  if (loading || !isReady) {
+  if (loading || (currentUser && profileLoading) || !isReady) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <CircularProgress />
@@ -102,13 +102,31 @@ const AppRoutes = () => {
         <Toolbar sx={{ display: { xs: 'block', sm: 'none' } }} />
         <Routes>
           <Route path="/login" element={!currentUser ? <LoginPage /> : <Navigate to="/scan" />} />
-          <Route path="/dashboard" element={currentUser ? <DashboardPage /> : <Navigate to="/login" />} />
-          <Route path="/scan" element={currentUser ? <ScanPage /> : <Navigate to="/login" />} />
-          <Route path="/history" element={currentUser ? <HistoryPage /> : <Navigate to="/login" />} />
-          <Route path="/users" element={currentUser ? <UsersManagementPage /> : <Navigate to="/login" />} />
-          <Route path="/destinations" element={currentUser ? <DestinationsPage /> : <Navigate to="/login" />} />
+          <Route
+            path="/dashboard"
+            element={currentUser ? (isAdmin ? <DashboardPage /> : <Navigate to="/scan" replace />) : <Navigate to="/login" />}
+          />
+          <Route
+            path="/scan"
+            element={currentUser ? (isAdmin ? <Navigate to="/dashboard" replace /> : <ScanPage />) : <Navigate to="/login" />}
+          />
+          <Route
+            path="/history"
+            element={currentUser ? (isAdmin ? <Navigate to="/dashboard" replace /> : <HistoryPage />) : <Navigate to="/login" />}
+          />
+          <Route
+            path="/users"
+            element={currentUser ? (isAdmin ? <UsersManagementPage /> : <Navigate to="/scan" replace />) : <Navigate to="/login" />}
+          />
+          <Route
+            path="/destinations"
+            element={currentUser ? (isAdmin ? <DestinationsPage /> : <Navigate to="/scan" replace />) : <Navigate to="/login" />}
+          />
           <Route path="/config" element={currentUser ? <ConfigPage /> : <Navigate to="/login" />} />
-          <Route path="/" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
+          <Route
+            path="/"
+            element={<Navigate to={currentUser ? (isAdmin ? '/dashboard' : '/scan') : '/login'} />}
+          />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
         {currentUser && <Navigation />}
