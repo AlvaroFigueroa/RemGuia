@@ -455,43 +455,41 @@ const DashboardPage = () => {
                             </Box>
                           }
                           secondary={
-                            <>
-                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
-                                <Typography component="span" variant="body2" color="text.secondary">
-                                  {formatDate(record.date || guide.date)}
-                                </Typography>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  {(record.location?.latitude && record.location.latitude !== 'No disponible') && (
-                                    <Tooltip title="Abrir en Google Maps">
-                                      <IconButton
-                                        size="small"
-                                        color="primary"
-                                        onClick={() => {
-                                          const url = `https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`;
-                                          window.open(url, '_blank');
-                                        }}
-                                      >
-                                        <LocationOn />
-                                      </IconButton>
-                                    </Tooltip>
-                                  )}
-                                  {record.imageData && (
-                                    <Tooltip title="Ver imagen">
-                                      <IconButton
-                                        size="small"
-                                        color="primary"
-                                        onClick={() => setSelectedImage({
-                                          src: record.imageData,
-                                          guideNumber: guide.guideNumber
-                                        })}
-                                      >
-                                        <Image />
-                                      </IconButton>
-                                    </Tooltip>
-                                  )}
-                                </Box>
+                            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', width: '100%' }}>
+                              <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                                {formatDate(record.date || guide.date)}
+                              </Typography>
+                              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                                {(record.location?.latitude && record.location.latitude !== 'No disponible') && (
+                                  <Tooltip title="Abrir en Google Maps">
+                                    <IconButton
+                                      size="small"
+                                      color="primary"
+                                      onClick={() => {
+                                        const url = `https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`;
+                                        window.open(url, '_blank');
+                                      }}
+                                    >
+                                      <LocationOn />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                                {record.imageData && (
+                                  <Tooltip title="Ver imagen">
+                                    <IconButton
+                                      size="small"
+                                      color="primary"
+                                      onClick={() => setSelectedImage({
+                                        src: record.imageData,
+                                        guideNumber: guide.guideNumber
+                                      })}
+                                    >
+                                      <Image />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
                               </Box>
-                            </>
+                            </Box>
                           }
                         />
                       </ListItem>

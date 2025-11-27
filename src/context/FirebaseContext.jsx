@@ -7,7 +7,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from 'firebase/auth';
-import { auth, db, storage } from '../firebase/config';
+import { auth, db, storage, adminAuth } from '../firebase/config';
 import { 
   collection, 
   addDoc, 
@@ -18,7 +18,8 @@ import {
   updateDoc,
   doc,
   getDoc,
-  setDoc
+  setDoc,
+  deleteDoc
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -278,6 +279,71 @@ export const FirebaseProvider = ({ children }) => {
   }, [currentUser, syncPendingRecords]);
 
   // Valor del contexto
+  const getAllUsers = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'users'));
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || '',
+          email: data.email || '',
+          role: data.role || 'usuario',
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt || null,
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : data.updatedAt || null
+        };
+      }).sort((a, b) => {
+        const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt || 0).getTime();
+        const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+    } catch (error) {
+      console.error('Error al obtener usuarios:', error);
+      throw error;
+    }
+  };
+
+  const createUserRecord = async ({ uid, email, role, name }) => {
+    if (!uid || !email) {
+      throw new Error('UID y correo son obligatorios');
+    }
+    const userDocRef = doc(db, 'users', uid);
+    await setDoc(userDocRef, {
+      name: name || '',
+      email,
+      role: role || 'usuario',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  };
+
+  const updateUserRole = async (uid, role) => {
+    if (!uid) throw new Error('UID inválido');
+    const userDocRef = doc(db, 'users', uid);
+    await updateDoc(userDocRef, {
+      role,
+      updatedAt: serverTimestamp()
+    });
+  };
+
+  const deleteUserRecord = async (uid) => {
+    if (!uid) throw new Error('UID inválido');
+    await deleteDoc(doc(db, 'users', uid));
+  };
+
+  const createManagedUser = async ({ name, email, password, role }) => {
+    if (!email || !password) {
+      throw new Error('Correo y contraseña son obligatorios');
+    }
+    if (password.length < 6) {
+      throw new Error('La contraseña debe tener al menos 6 caracteres');
+    }
+    const userCredential = await createUserWithEmailAndPassword(adminAuth, email, password);
+    const uid = userCredential.user.uid;
+    await createUserRecord({ uid, email, role, name });
+    return uid;
+  };
+
   const value = {
     currentUser,
     login,
@@ -286,6 +352,11 @@ export const FirebaseProvider = ({ children }) => {
     logout,
     saveGuideRecord,
     getGuideRecords,
+    getAllUsers,
+    createUserRecord,
+    updateUserRole,
+    deleteUserRecord,
+    createManagedUser,
     uploadPDF,
     syncLocalRecords,
     syncPendingRecords,

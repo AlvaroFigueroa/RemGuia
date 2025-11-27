@@ -27,7 +27,8 @@ import {
   FaEdit,
   FaPlus,
   FaTachometerAlt,
-  FaImage
+  FaImage,
+  FaUsers
 } from 'react-icons/fa';
 
 import { MdCameraswitch } from 'react-icons/md';
@@ -60,5 +61,6 @@ export {
   FaPlus as Add,
   FaTrashAlt as Delete,
   FaTachometerAlt as Dashboard,
-  FaImage as Image
+  FaImage as Image,
+  FaUsers as Users
 };

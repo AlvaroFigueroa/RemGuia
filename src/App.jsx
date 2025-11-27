@@ -13,6 +13,7 @@ import './App.css'
 
 // Importamos las páginas
 import DashboardPage from './pages/DashboardPage'
+import UsersManagementPage from './pages/UsersManagementPage'
 import ScanPage from './pages/ScanPage'
 import HistoryPage from './pages/HistoryPage'
 import ConfigPage from './pages/ConfigPage'
@@ -103,6 +104,7 @@ const AppRoutes = () => {
           <Route path="/dashboard" element={currentUser ? <DashboardPage /> : <Navigate to="/login" />} />
           <Route path="/scan" element={currentUser ? <ScanPage /> : <Navigate to="/login" />} />
           <Route path="/history" element={currentUser ? <HistoryPage /> : <Navigate to="/login" />} />
+          <Route path="/users" element={currentUser ? <UsersManagementPage /> : <Navigate to="/login" />} />
           <Route path="/config" element={currentUser ? <ConfigPage /> : <Navigate to="/login" />} />
           <Route path="/" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
           <Route path="*" element={<NotFoundPage />} />
