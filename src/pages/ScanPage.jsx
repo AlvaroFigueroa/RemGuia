@@ -10,10 +10,9 @@ import Webcam from 'react-webcam';
 // Importamos directamente Tesseract en lugar de solo createWorker
 import Tesseract from 'tesseract.js';
 import { useFirebase } from '../context/FirebaseContext';
-import { DESTINATIONS } from '../constants/destinations';
 
 const ScanPage = () => {
-  const { saveGuideRecord, currentUser } = useFirebase();
+  const { saveGuideRecord, currentUser, getDestinationsCatalog } = useFirebase();
   const [image, setImage] = useState(null);
   const [extractedGuide, setExtractedGuide] = useState('');
   const [destination, setDestination] = useState('');
@@ -39,6 +38,9 @@ const ScanPage = () => {
   const pendingFrameRef = useRef(null);
   const pendingFrameFromAutoRef = useRef(false);
   const LAST_LOCATION_KEY = 'lastKnownLocation';
+  const [destinationsCatalog, setDestinationsCatalog] = useState([]);
+  const [destinationsLoading, setDestinationsLoading] = useState(false);
+  const [destinationsError, setDestinationsError] = useState('');
 
   const appendDebugLog = useCallback((message) => {
     setDebugLogs(prev => {
@@ -107,6 +109,52 @@ const ScanPage = () => {
       console.warn('No se pudo guardar la ubicación localmente:', storageError);
     }
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadDestinations = async () => {
+      setDestinationsLoading(true);
+      setDestinationsError('');
+      try {
+        const data = await getDestinationsCatalog();
+        if (isMounted) {
+          setDestinationsCatalog(data);
+        }
+      } catch (error) {
+        console.error('Error al cargar destinos:', error);
+        if (isMounted) {
+          setDestinationsError('No se pudieron cargar los destinos disponibles.');
+        }
+      } finally {
+        if (isMounted) {
+          setDestinationsLoading(false);
+        }
+      }
+    };
+
+    loadDestinations();
+    return () => {
+      isMounted = false;
+    };
+  }, [getDestinationsCatalog]);
+
+  const availableDestinations = useMemo(() => {
+    return destinationsCatalog.map((dest) => ({ value: dest.name, label: dest.name }));
+  }, [destinationsCatalog]);
+
+  const availableSubDestinations = useMemo(() => {
+    if (!destination) return [];
+    return destinationsCatalog.find((dest) => dest.name === destination)?.subDestinations || [];
+  }, [destinationsCatalog, destination]);
+
+  useEffect(() => {
+    if (!destination) return;
+    const exists = availableDestinations.some((dest) => dest.value === destination);
+    if (!exists) {
+      setDestination('');
+      setSubDestination('');
+    }
+  }, [availableDestinations, destination]);
 
   const basePath = import.meta.env.BASE_URL ?? '/';
   const normalizedBasePath = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
@@ -654,6 +702,11 @@ const ScanPage = () => {
               />
             </Box>
             <Box sx={{ mb: 2 }}>
+              {destinationsError && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  {destinationsError}
+                </Alert>
+              )}
               <TextField
                 label="Destino"
                 select
@@ -664,9 +717,10 @@ const ScanPage = () => {
                   setSubDestination('');
                 }}
                 helperText="Selecciona el destino de la guía"
+                disabled={destinationsLoading}
               >
                 <MenuItem value="">Selecciona un destino</MenuItem>
-                {DESTINATIONS.map((dest) => (
+                {availableDestinations.map((dest) => (
                   <MenuItem key={dest.value} value={dest.value}>
                     {dest.label}
                   </MenuItem>
@@ -681,14 +735,15 @@ const ScanPage = () => {
                 value={subDestination}
                 onChange={(e) => setSubDestination(e.target.value)}
                 helperText={destination ? 'Selecciona el subdestino' : 'Selecciona primero un destino'}
-                disabled={!destination}
+                disabled={!destination || destinationsLoading}
               >
                 <MenuItem value="">Selecciona un subdestino</MenuItem>
-                {destination && DESTINATIONS.find((d) => d.value === destination)?.subDestinations.map((sub) => (
-                  <MenuItem key={sub} value={sub}>
-                    {sub}
-                  </MenuItem>
-                ))}
+                {destination &&
+                  availableSubDestinations.map((sub) => (
+                    <MenuItem key={sub} value={sub}>
+                      {sub}
+                    </MenuItem>
+                  ))}
               </TextField>
             </Box>
           </>

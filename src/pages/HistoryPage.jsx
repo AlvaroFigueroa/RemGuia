@@ -11,15 +11,21 @@ import { es } from 'date-fns/locale';
 import { useFirebase } from '../context/FirebaseContext';
 
 const HistoryPage = () => {
-  const { getGuideRecords, currentUser } = useFirebase();
+  const { getGuideRecords, currentUser, getDestinationsCatalog, getLocationsCatalog } = useFirebase();
   const [records, setRecords] = useState([]);
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
+  const [destinoFilter, setDestinoFilter] = useState('Todos');
+  const [ubicacionFilter, setUbicacionFilter] = useState('Todos');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const getInitialOnlineStatus = () => (typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
+  const [destinationsCatalog, setDestinationsCatalog] = useState([]);
+  const [locationsCatalog, setLocationsCatalog] = useState([]);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogLoading, setCatalogLoading] = useState({ destinations: false, locations: false });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -54,6 +60,8 @@ const HistoryPage = () => {
     }
 
     loadRecords();
+    loadDestinationsCatalog();
+    loadLocationsCatalog();
   }, [currentUser, isOnline, loadLocalRecords]);
   
   // Función para cargar registros desde la fuente seleccionada
@@ -82,7 +90,38 @@ const HistoryPage = () => {
     }
   };
 
-  // Filtrar registros cuando cambia el término de búsqueda o el filtro de fecha
+  const loadDestinationsCatalog = useCallback(async () => {
+    setCatalogLoading((prev) => ({ ...prev, destinations: true }));
+    try {
+      const data = await getDestinationsCatalog();
+      setDestinationsCatalog(data);
+    } catch (error) {
+      console.error('Error al cargar destinos:', error);
+      setCatalogError('No se pudieron cargar los destinos disponibles.');
+    } finally {
+      setCatalogLoading((prev) => ({ ...prev, destinations: false }));
+    }
+  }, [getDestinationsCatalog]);
+
+  const loadLocationsCatalog = useCallback(async () => {
+    setCatalogLoading((prev) => ({ ...prev, locations: true }));
+    try {
+      const data = await getLocationsCatalog();
+      setLocationsCatalog(data);
+    } catch (error) {
+      console.error('Error al cargar ubicaciones:', error);
+      setCatalogError('No se pudieron cargar las ubicaciones disponibles.');
+    } finally {
+      setCatalogLoading((prev) => ({ ...prev, locations: false }));
+    }
+  }, [getLocationsCatalog]);
+
+  const destinoOptions = ['Todos', ...destinationsCatalog.map((dest) => dest.name)]
+    .filter(Boolean);
+  const ubicacionOptions = ['Todos', ...locationsCatalog.map((loc) => loc.name)]
+    .filter(Boolean);
+
+  // Filtrar registros cuando cambia el término de búsqueda o los filtros
   useEffect(() => {
     let filtered = [...records];
     
@@ -123,11 +162,27 @@ const HistoryPage = () => {
       }
     }
     
+    if (destinoFilter !== 'Todos') {
+      filtered = filtered.filter((record) =>
+        (record.destination || record.destino || '')
+          .toLowerCase()
+          .includes(destinoFilter.toLowerCase())
+      );
+    }
+
+    if (ubicacionFilter !== 'Todos') {
+      filtered = filtered.filter((record) =>
+        (record.location?.name || record.location?.alias || record.ubicacion || '')
+          .toLowerCase()
+          .includes(ubicacionFilter.toLowerCase())
+      );
+    }
+
     // Ordenar por fecha (más reciente primero)
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
     
     setFilteredRecords(filtered);
-  }, [records, searchTerm, dateFilter]);
+  }, [records, searchTerm, dateFilter, destinoFilter, ubicacionFilter]);
 
   // Formatear fecha para mostrar
   const formatDate = (dateString) => {

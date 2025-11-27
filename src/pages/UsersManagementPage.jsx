@@ -26,7 +26,6 @@ import {
   Divider
 } from '@mui/material';
 import { useFirebase } from '../context/FirebaseContext';
-import { DESTINATIONS, LOCATIONS } from '../constants/destinations';
 import { Refresh, Edit, Delete } from '../components/AppIcons';
 
 const roleColors = {
@@ -45,7 +44,14 @@ const formatDate = (value) => {
 const DEFAULT_ROLES = ['usuario', 'admin', 'supervisor'];
 
 const UsersManagementPage = () => {
-  const { getAllUsers, createManagedUser, updateUserAccess, deleteUserRecord } = useFirebase();
+  const {
+    getAllUsers,
+    createManagedUser,
+    updateUserAccess,
+    deleteUserRecord,
+    getDestinationsCatalog,
+    getLocationsCatalog
+  } = useFirebase();
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,6 +70,36 @@ const UsersManagementPage = () => {
   });
   const [dialogLoading, setDialogLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [destinationsCatalog, setDestinationsCatalog] = useState([]);
+  const [locationsCatalog, setLocationsCatalog] = useState([]);
+  const [catalogsLoading, setCatalogsLoading] = useState({ destinations: false, locations: false });
+  const [catalogError, setCatalogError] = useState('');
+
+  const loadDestinationsCatalog = useCallback(async () => {
+    setCatalogsLoading((prev) => ({ ...prev, destinations: true }));
+    try {
+      const data = await getDestinationsCatalog();
+      setDestinationsCatalog(data);
+    } catch (error) {
+      console.error('Error al cargar catálogo de destinos:', error);
+      setCatalogError('No se pudieron cargar los destinos disponibles.');
+    } finally {
+      setCatalogsLoading((prev) => ({ ...prev, destinations: false }));
+    }
+  }, [getDestinationsCatalog]);
+
+  const loadLocationsCatalog = useCallback(async () => {
+    setCatalogsLoading((prev) => ({ ...prev, locations: true }));
+    try {
+      const data = await getLocationsCatalog();
+      setLocationsCatalog(data);
+    } catch (error) {
+      console.error('Error al cargar catálogo de ubicaciones:', error);
+      setCatalogError('No se pudieron cargar las ubicaciones disponibles.');
+    } finally {
+      setCatalogsLoading((prev) => ({ ...prev, locations: false }));
+    }
+  }, [getLocationsCatalog]);
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
@@ -82,7 +118,9 @@ const UsersManagementPage = () => {
 
   useEffect(() => {
     loadUsers();
-  }, [loadUsers]);
+    loadDestinationsCatalog();
+    loadLocationsCatalog();
+  }, [loadUsers, loadDestinationsCatalog, loadLocationsCatalog]);
 
   useEffect(() => {
     let list = [...users];
@@ -204,11 +242,27 @@ const UsersManagementPage = () => {
     }
   };
 
+  const availableDestinations = destinationsCatalog.map((dest) => ({
+    value: dest.name,
+    label: dest.name
+  }));
+
+  const availableLocations = locationsCatalog.map((location) => ({
+    value: location.name,
+    label: location.name
+  }));
+
   return (
     <Container maxWidth="md" sx={{ pt: 3, pb: 10 }}>
       <Typography variant="h4" component="h1" gutterBottom align="center">
         Gestión de Usuarios
       </Typography>
+
+      {catalogError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setCatalogError('')}>
+          {catalogError}
+        </Alert>
+      )}
 
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-start" sx={{ mb: 2 }}>
@@ -401,9 +455,10 @@ const UsersManagementPage = () => {
             select
             value={formValues.location}
             onChange={(e) => setFormValues((prev) => ({ ...prev, location: e.target.value }))}
+            disabled={catalogsLoading.locations}
           >
             <MenuItem value="">Sin ubicación</MenuItem>
-            {LOCATIONS.map((location) => (
+            {availableLocations.map((location) => (
               <MenuItem key={location.value} value={location.value}>
                 {location.label}
               </MenuItem>
@@ -426,11 +481,12 @@ const UsersManagementPage = () => {
                 selected.length === 0
                   ? 'Sin destinos'
                   : selected
-                      .map((value) => DESTINATIONS.find((d) => d.value === value)?.label || value)
+                      .map((value) => availableDestinations.find((d) => d.value === value)?.label || value)
                       .join(', ')
             }}
+            disabled={catalogsLoading.destinations}
           >
-            {DESTINATIONS.map((destination) => (
+            {availableDestinations.map((destination) => (
               <MenuItem key={destination.value} value={destination.value}>
                 {destination.label}
               </MenuItem>
@@ -470,9 +526,10 @@ const UsersManagementPage = () => {
             fullWidth
             value={formValues.location}
             onChange={(e) => setFormValues((prev) => ({ ...prev, location: e.target.value }))}
+            disabled={catalogsLoading.locations}
           >
             <MenuItem value="">Sin ubicación</MenuItem>
-            {LOCATIONS.map((location) => (
+            {availableLocations.map((location) => (
               <MenuItem key={location.value} value={location.value}>
                 {location.label}
               </MenuItem>
@@ -496,11 +553,12 @@ const UsersManagementPage = () => {
                 selected.length === 0
                   ? 'Sin destinos'
                   : selected
-                      .map((value) => DESTINATIONS.find((d) => d.value === value)?.label || value)
+                      .map((value) => availableDestinations.find((d) => d.value === value)?.label || value)
                       .join(', ')
             }}
+            disabled={catalogsLoading.destinations}
           >
-            {DESTINATIONS.map((destination) => (
+            {availableDestinations.map((destination) => (
               <MenuItem key={destination.value} value={destination.value}>
                 {destination.label}
               </MenuItem>

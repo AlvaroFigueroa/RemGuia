@@ -61,7 +61,7 @@ const formatDate = (value) => {
 };
 
 const DashboardPage = () => {
-  const { getGuideRecords, currentUser } = useFirebase();
+  const { getGuideRecords, currentUser, getDestinationsCatalog, getLocationsCatalog } = useFirebase();
   const [filters, setFilters] = useState({
     startDate: isoDate(sevenDaysAgo),
     endDate: isoDate(today),
@@ -77,6 +77,10 @@ const DashboardPage = () => {
     missingInUbicacion: []
   });
   const [selectedImage, setSelectedImage] = useState(null);
+  const [destinationsCatalog, setDestinationsCatalog] = useState([]);
+  const [locationsCatalog, setLocationsCatalog] = useState([]);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogLoading, setCatalogLoading] = useState({ destinations: false, locations: false });
 
   const transporteApiBaseUrl = useMemo(() => {
     const base = import.meta.env.VITE_TRANSPORTE_API || '';
@@ -184,31 +188,59 @@ const DashboardPage = () => {
     }
   }, [fetchDestinoGuides, fetchUbicacionGuides, compareGuides, filters]);
 
+  const loadDestinationsCatalog = useCallback(async () => {
+    setCatalogLoading((prev) => ({ ...prev, destinations: true }));
+    try {
+      const data = await getDestinationsCatalog();
+      setDestinationsCatalog(data);
+    } catch (error) {
+      console.error('Error al cargar destinos:', error);
+      setCatalogError('No se pudieron cargar los destinos disponibles.');
+    } finally {
+      setCatalogLoading((prev) => ({ ...prev, destinations: false }));
+    }
+  }, [getDestinationsCatalog]);
+
+  const loadLocationsCatalog = useCallback(async () => {
+    setCatalogLoading((prev) => ({ ...prev, locations: true }));
+    try {
+      const data = await getLocationsCatalog();
+      setLocationsCatalog(data);
+    } catch (error) {
+      console.error('Error al cargar ubicaciones:', error);
+      setCatalogError('No se pudieron cargar las ubicaciones disponibles.');
+    } finally {
+      setCatalogLoading((prev) => ({ ...prev, locations: false }));
+    }
+  }, [getLocationsCatalog]);
+
   useEffect(() => {
     if (currentUser) {
       handleCompare();
+      loadDestinationsCatalog();
+      loadLocationsCatalog();
     }
-  }, [currentUser, handleCompare]);
+  }, [currentUser, handleCompare, loadDestinationsCatalog, loadLocationsCatalog]);
 
   const totalUbicacion = ubicacionGuides.length;
   const totalDestino = destinoGuides.length;
   const totalDiferencias = differences.missingInDestino.length + differences.missingInUbicacion.length;
 
   const ubicacionOptions = useMemo(() => {
-    const set = new Set(['Todos']);
-    ubicacionGuides.forEach((guide) => {
-      if (guide.ubicacion) set.add(guide.ubicacion);
+    const options = ['Todos'];
+    locationsCatalog.forEach((location) => {
+      if (location.name) options.push(location.name);
     });
-    return Array.from(set);
-  }, [ubicacionGuides]);
+    return options;
+  }, [locationsCatalog]);
 
   const destinoOptions = useMemo(() => {
-    const set = new Set(['Todos']);
-    destinoGuides.forEach((guide) => {
-      if (guide.destino) set.add(guide.destino);
+    const options = ['Todos'];
+    destinationsCatalog.forEach((destination) => {
+      if (destination.name) options.push(destination.name);
     });
-    return Array.from(set);
-  }, [destinoGuides]);
+    return options;
+  }, [destinationsCatalog]);
 
   return (
     <Container maxWidth="md" sx={{ pt: 3, pb: 10 }}>
@@ -219,6 +251,11 @@ const DashboardPage = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      )}
+      {catalogError && (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setCatalogError('')}>
+          {catalogError}
         </Alert>
       )}
 
