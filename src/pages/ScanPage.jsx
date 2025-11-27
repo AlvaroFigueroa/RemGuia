@@ -5,7 +5,7 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent,
   DialogContentText, DialogActions, MenuItem
 } from '@mui/material';
-import { CameraAlt, Save, FlipCameraIos, Refresh } from '../components/AppIcons';
+import { CameraAlt, Save, FlipCameraIos, Refresh, CheckCircle } from '../components/AppIcons';
 import Webcam from 'react-webcam';
 // Importamos directamente Tesseract en lugar de solo createWorker
 import Tesseract from 'tesseract.js';
@@ -811,20 +811,40 @@ const ScanPage = () => {
       <Dialog
         open={successModalOpen}
         onClose={() => setSuccessModalOpen(false)}
+        PaperProps={{
+          sx: {
+            backgroundColor: '#e8f5e9',
+            border: '1px solid #a5d6a7',
+            boxShadow: '0 12px 30px rgba(46, 125, 50, 0.25)'
+          }
+        }}
       >
-        <DialogTitle>Registro guardado</DialogTitle>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#2e7d32' }}>
+          <CheckCircle size={22} color="#2e7d32" />
+          Registro guardado
+        </DialogTitle>
         <DialogContent>
-          <DialogContentText>
+          <DialogContentText sx={{ color: '#1b5e20' }}>
             {success || 'Registro guardado correctamente.'}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setSuccessModalOpen(false);
-            setSuccess('');
-            resetScan();
-          }} autoFocus>
-            Aceptar
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: '#43a047',
+              '&:hover': {
+                backgroundColor: '#2e7d32'
+              }
+            }}
+            onClick={() => {
+              setSuccessModalOpen(false);
+              setSuccess('');
+              resetScan();
+            }}
+            autoFocus
+          >
+            Listo
           </Button>
         </DialogActions>
       </Dialog>

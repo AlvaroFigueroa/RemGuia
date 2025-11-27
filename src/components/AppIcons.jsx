@@ -28,7 +28,8 @@ import {
   FaPlus,
   FaTachometerAlt,
   FaImage,
-  FaUsers
+  FaUsers,
+  FaCheckCircle
 } from 'react-icons/fa';
 
 import { MdCameraswitch } from 'react-icons/md';
@@ -62,5 +63,6 @@ export {
   FaTrashAlt as Delete,
   FaTachometerAlt as Dashboard,
   FaImage as Image,
-  FaUsers as Users
+  FaUsers as Users,
+  FaCheckCircle as CheckCircle
 };
