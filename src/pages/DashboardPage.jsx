@@ -13,7 +13,8 @@ import {
   CircularProgress,
   List,
   ListItem,
-  ListItemText
+  ListItemText,
+  Stack
 } from '@mui/material';
 import { useFirebase } from '../context/FirebaseContext';
 import {
@@ -273,54 +274,84 @@ const DashboardPage = () => {
         </Grid>
       </Paper>
 
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={4}>
-          <Paper elevation={2} sx={{ p: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Guías desde Ubicación
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={2}
+        sx={{ mb: 3, alignItems: 'stretch' }}
+      >
+        <Paper
+          elevation={2}
+          sx={{
+            p: 3,
+            flex: 1,
+            minHeight: 220,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between'
+          }}
+        >
+          <Typography variant="subtitle2" color="text.secondary">
+            Guías desde Ubicación
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LocationOn />
+            <Typography variant="h3">{totalUbicacion}</Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            Registros provenientes del sistema de transporte (SQL).
+          </Typography>
+        </Paper>
+
+        <Paper
+          elevation={2}
+          sx={{
+            p: 3,
+            flex: 1,
+            minHeight: 220,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between'
+          }}
+        >
+          <Typography variant="subtitle2" color="text.secondary">
+            Guías en Destino
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CloudSync />
+            <Typography variant="h3">{totalDestino}</Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            Datos recibidos desde la app en terreno (Firestore).
+          </Typography>
+        </Paper>
+
+        <Paper
+          elevation={2}
+          sx={{
+            p: 3,
+            flex: 1,
+            minHeight: 220,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between'
+          }}
+        >
+          <Typography variant="subtitle2" color="text.secondary">
+            Diferencia
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {totalDiferencias > 0 ? <CloudOff /> : <CloudSync />}
+            <Typography variant="h3" color={totalDiferencias ? 'error.main' : 'success.main'}>
+              {totalDiferencias}
             </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-              <LocationOn />
-              <Typography variant="h4">{totalUbicacion}</Typography>
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              Registros provenientes del sistema de transporte (SQL).
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper elevation={2} sx={{ p: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Guías en Destino
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-              <CloudSync />
-              <Typography variant="h4">{totalDestino}</Typography>
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              Datos recibidos desde la app en terreno (Firestore).
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper elevation={2} sx={{ p: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Diferencia
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-              {totalDiferencias > 0 ? <CloudOff /> : <CloudSync />}
-              <Typography variant="h4" color={totalDiferencias ? 'error.main' : 'success.main'}>
-                {totalDiferencias}
-              </Typography>
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              {totalDiferencias > 0
-                ? 'Revisa las listas para conocer los detalles.'
-                : 'Sin diferencias detectadas en este rango.'}
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            {totalDiferencias > 0
+              ? 'Revisa las listas para conocer los detalles.'
+              : 'Sin diferencias detectadas en este rango.'}
+          </Typography>
+        </Paper>
+      </Stack>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
