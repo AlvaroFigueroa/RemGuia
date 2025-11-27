@@ -103,10 +103,8 @@ if ($subResult) {
         sort($destinos[$destName]['subDestinations']);
     };
 
-    $mergeValues('Global Diguillin', array_merge(
-        $subDestinosMap['Global Diguillin Sur'],
-        $subDestinosMap['Global Diguillin Norte']
-    ));
+    $mergeValues('Global Diguillin Sur', $subDestinosMap['Global Diguillin Sur']);
+    $mergeValues('Global Diguillin Norte', $subDestinosMap['Global Diguillin Norte']);
     $mergeValues('SAFI 413884', $subDestinosMap['SAFI 413884']);
     $mergeValues('SAFI 416335', $subDestinosMap['SAFI 416335']);
 }
