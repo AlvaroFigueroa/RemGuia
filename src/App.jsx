@@ -7,6 +7,8 @@ import CircularProgress from '@mui/material/CircularProgress'
 import AppBar from '@mui/material/AppBar'
 import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
+import { Logout as LogoutIcon } from './components/AppIcons'
 import './App.css'
 
 // Importamos las páginas
@@ -35,8 +37,17 @@ const theme = createTheme({
 
 // Componente de enrutamiento protegido con Firebase
 const AppRoutes = () => {
-  const { currentUser, loading } = useFirebase();
+  const { currentUser, loading, logout } = useFirebase();
   const [isReady, setIsReady] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      localStorage.removeItem('isLoggedIn');
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
+  };
   
   useEffect(() => {
     // Verificar si hay una sesión guardada en localStorage
@@ -67,10 +78,21 @@ const AppRoutes = () => {
     <Router>
       <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <AppBar position="sticky" color="primary" elevation={1}>
-          <Toolbar sx={{ justifyContent: 'center' }}>
+          <Toolbar sx={{ justifyContent: 'space-between', gap: 2 }}>
             <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', letterSpacing: 0.5 }}>
               Lector de Guías
             </Typography>
+            {currentUser && (
+              <Button
+                color="inherit"
+                size="small"
+                startIcon={<LogoutIcon sx={{ fontSize: 18 }} />}
+                onClick={handleLogout}
+                sx={{ textTransform: 'none', fontWeight: 500 }}
+              >
+                Cerrar sesión
+              </Button>
+            )}
           </Toolbar>
         </AppBar>
         {/* Separador para evitar que el contenido quede oculto bajo el AppBar */}

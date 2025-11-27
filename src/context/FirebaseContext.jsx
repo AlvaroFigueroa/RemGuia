@@ -17,7 +17,8 @@ import {
   serverTimestamp,
   updateDoc,
   doc,
-  getDoc
+  getDoc,
+  setDoc
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -53,8 +54,23 @@ export const FirebaseProvider = ({ children }) => {
     return signInWithPopup(auth, provider);
   };
 
-  const signup = (email, password) => {
-    return createUserWithEmailAndPassword(auth, email, password);
+  const signup = async (email, password) => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      await setDoc(userDocRef, {
+        email: user.email,
+        role: 'usuario',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (error) {
+      console.error('Error al guardar el usuario en Firestore:', error);
+    }
+
+    return userCredential;
   };
 
   const logout = () => {
