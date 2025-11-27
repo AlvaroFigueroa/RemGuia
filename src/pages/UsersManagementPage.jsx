@@ -185,11 +185,18 @@ const UsersManagementPage = () => {
           </TextField>
           <Button
             variant="contained"
-            startIcon={<Refresh />}
             onClick={loadUsers}
             disabled={isLoading}
+            sx={{
+              minWidth: 150,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1
+            }}
           >
-            Actualizar
+            <Refresh />
+            <Box component="span">Actualizar</Box>
           </Button>
           <Button
             variant="outlined"
