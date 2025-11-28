@@ -18,6 +18,8 @@ import {
   Button,
   Dialog,
   DialogContent,
+  DialogTitle,
+  DialogActions,
   IconButton,
   Tooltip
 } from '@mui/material';
@@ -75,6 +77,25 @@ const buildGuideKey = (guide) => {
   return `${guideNumber}||${subDestino}`;
 };
 
+const getLocationLabel = (guide) => {
+  if (!guide) return 'No registrada';
+  const direct = typeof guide.ubicacion === 'string' ? guide.ubicacion.trim() : '';
+  if (direct) return direct;
+
+  const record = guide.rawRecord || guide;
+  const location = record?.location;
+
+  if (typeof location === 'string' && location.trim()) return location.trim();
+
+  const alias = typeof location?.alias === 'string' ? location.alias.trim() : '';
+  if (alias) return alias;
+
+  const name = typeof location?.name === 'string' ? location.name.trim() : '';
+  if (name) return name;
+
+  return 'No registrada';
+};
+
 const formatDate = (value) => {
   if (!value) return 'Fecha no disponible';
   const parsed = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
@@ -101,6 +122,7 @@ const DashboardPage = () => {
     matches: []
   });
   const [selectedImage, setSelectedImage] = useState(null);
+  const [showDifferencesModal, setShowDifferencesModal] = useState(false);
   const [destinationsCatalog, setDestinationsCatalog] = useState([]);
   const [locationsCatalog, setLocationsCatalog] = useState([]);
   const [catalogError, setCatalogError] = useState('');
@@ -198,18 +220,26 @@ const DashboardPage = () => {
   }, [transporteApiBaseUrl]);
 
   const compareGuides = useCallback((ubicacion, destino) => {
-    const destinoKeySet = new Set(destino.map((guide) => buildGuideKey(guide)));
-    const ubicacionKeySet = new Set(ubicacion.map((guide) => buildGuideKey(guide)));
+    const destinoKeyMap = new Map(destino.map((guide) => [buildGuideKey(guide), guide]));
+    const ubicacionKeyMap = new Map(ubicacion.map((guide) => [buildGuideKey(guide), guide]));
 
-    const missingInDestino = ubicacion.filter((guide) => !destinoKeySet.has(buildGuideKey(guide)));
-    const missingInUbicacion = destino.filter((guide) => !ubicacionKeySet.has(buildGuideKey(guide)));
-    const matches = Array.from(
-      new Set(
-        destino
-          .filter((guide) => guide.guideNumber && ubicacionKeySet.has(buildGuideKey(guide)))
-          .map((guide) => buildGuideKey(guide))
-      )
-    );
+    const missingInDestino = ubicacion.filter((guide) => !destinoKeyMap.has(buildGuideKey(guide)));
+    const missingInUbicacion = destino.filter((guide) => !ubicacionKeyMap.has(buildGuideKey(guide)));
+    const matches = [];
+
+    destinoKeyMap.forEach((guide, key) => {
+      if (!guide?.guideNumber) return;
+      const sqlGuide = ubicacionKeyMap.get(key);
+      if (sqlGuide) {
+        matches.push({
+          key,
+          guideNumber: guide.guideNumber,
+          subDestino: guide.subDestino || sqlGuide.subDestino || '',
+          firestore: guide,
+          sql: sqlGuide
+        });
+      }
+    });
 
     return {
       missingInDestino,
@@ -283,6 +313,103 @@ const DashboardPage = () => {
   const totalDestino = destinoGuides.length;
   const totalDiferencias = differences.missingInDestino.length + differences.missingInUbicacion.length;
   const totalCoincidencias = differences.matches.length;
+
+  const renderGuideList = (
+    items = [],
+    originLabel,
+    emptyLabel,
+    chipColor = 'default',
+    highlightColor = 'transparent'
+  ) => {
+    if (!items.length) {
+      return (
+        <Typography variant="body2" color="text.secondary">
+          {emptyLabel}
+        </Typography>
+      );
+    }
+
+    return (
+      <List dense sx={{ maxHeight: 240, overflow: 'auto' }}>
+        {items.map((guide, index) => (
+          <ListItem
+            key={`${originLabel}-${buildGuideKey(guide)}-${index}`}
+            alignItems="flex-start"
+            sx={{
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 0.5,
+              backgroundColor: highlightColor,
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: `${chipColor}.main` || 'divider',
+              mb: 1
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle2">N° {guide.guideNumber || 'Sin número'}</Typography>
+              <Chip size="small" label={originLabel} color={chipColor} variant="outlined" />
+            </Box>
+            <Typography variant="body2">Destino: {guide.destino || 'No definido'}</Typography>
+            <Typography variant="body2">Subdestino: {guide.subDestino || 'No definido'}</Typography>
+            <Typography variant="body2">Ubicación: {getLocationLabel(guide)}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {formatDate(guide.date)}
+            </Typography>
+          </ListItem>
+        ))}
+      </List>
+    );
+  };
+
+  const renderMatchesList = (items = []) => {
+    if (!items.length) {
+      return (
+        <Typography variant="body2" color="text.secondary">
+          No hay coincidencias en este rango.
+        </Typography>
+      );
+    }
+
+    return (
+      <List dense sx={{ maxHeight: 240, overflow: 'auto' }}>
+        {items.map((match, index) => (
+          <ListItem
+            key={`match-${match.key}-${index}`}
+            alignItems="flex-start"
+            sx={{
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 0.5,
+              backgroundColor: 'rgba(56, 142, 60, 0.08)',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'success.light',
+              mb: 1
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle2">N° {match.guideNumber}</Typography>
+              <Chip size="small" label="Coincidencia" color="success" variant="outlined" />
+            </Box>
+            <Typography variant="body2">Subdestino: {match.subDestino || 'No definido'}</Typography>
+            <Typography variant="body2" fontWeight={600}>SQL</Typography>
+            <Typography variant="body2">Destino: {match.sql?.destino || 'No definido'}</Typography>
+            <Typography variant="body2">Ubicación: {getLocationLabel(match.sql)}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {formatDate(match.sql?.date)}
+            </Typography>
+            <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>Firestore</Typography>
+            <Typography variant="body2">Destino: {match.firestore?.destino || match.firestore?.destination || 'No definido'}</Typography>
+            <Typography variant="body2">Ubicación: {getLocationLabel(match.firestore)}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {formatDate(match.firestore?.date)}
+            </Typography>
+          </ListItem>
+        ))}
+      </List>
+    );
+  };
 
   const ubicacionOptions = useMemo(() => {
     const names = locationsCatalog
@@ -499,6 +626,15 @@ const DashboardPage = () => {
               ? 'Revisa las listas para conocer los detalles.'
               : 'Sin diferencias detectadas en este rango.'}
           </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            sx={{ alignSelf: 'flex-start', mt: 1 }}
+            onClick={() => setShowDifferencesModal(true)}
+            disabled={!totalUbicacion && !totalDestino}
+          >
+            Ver detalle
+          </Button>
         </Paper>
 
         <Paper
@@ -675,6 +811,52 @@ const DashboardPage = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      <Dialog
+        open={showDifferencesModal}
+        onClose={() => setShowDifferencesModal(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Detalle de diferencias y coincidencias</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3}>
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                Solo en SQL (Ubicación)
+              </Typography>
+              {renderGuideList(
+                differences.missingInDestino,
+                'SQL',
+                'No hay guías exclusivas de SQL en este rango.',
+                'warning',
+                'rgba(255, 167, 38, 0.12)'
+              )}
+            </Box>
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                Solo en Firestore (Destino)
+              </Typography>
+              {renderGuideList(
+                differences.missingInUbicacion,
+                'Firestore',
+                'No hay guías exclusivas de Firestore en este rango.',
+                'primary',
+                'rgba(33, 150, 243, 0.12)'
+              )}
+            </Box>
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                Coincidencias en ambas tablas
+              </Typography>
+              {renderMatchesList(differences.matches)}
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowDifferencesModal(false)}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={Boolean(selectedImage)}
