@@ -30,10 +30,11 @@ import {
   Image
 } from '../components/AppIcons';
 
-const isoDate = (date) => date.toISOString().split('T')[0];
+const isoDate = (date) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().split('T')[0];
+};
 const today = new Date();
-const sevenDaysAgo = new Date();
-sevenDaysAgo.setDate(today.getDate() - 7);
 
 const normalizeGuide = (guide, fallback = {}) => {
   const guideNumber = String(
@@ -84,7 +85,7 @@ const formatDate = (value) => {
 const DashboardPage = () => {
   const { getGuideRecords, currentUser, getDestinationsCatalog, getLocationsCatalog } = useFirebase();
   const [filters, setFilters] = useState({
-    startDate: isoDate(sevenDaysAgo),
+    startDate: isoDate(today),
     endDate: isoDate(today),
     ubicacion: 'Todos',
     destino: 'Todos',
