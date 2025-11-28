@@ -12,7 +12,7 @@ import Tesseract from 'tesseract.js';
 import { useFirebase } from '../context/FirebaseContext';
 
 const ScanPage = () => {
-  const { saveGuideRecord, currentUser, getDestinationsCatalog } = useFirebase();
+  const { saveGuideRecord, currentUser, currentUserProfile, getDestinationsCatalog } = useFirebase();
   const [image, setImage] = useState(null);
   const [extractedGuide, setExtractedGuide] = useState('');
   const [destination, setDestination] = useState('');
@@ -138,14 +138,115 @@ const ScanPage = () => {
     };
   }, [getDestinationsCatalog]);
 
+  const normalizedAssignments = useMemo(() => {
+    const entries = Array.isArray(currentUserProfile?.destinations) ? currentUserProfile.destinations : [];
+    if (entries.length === 0) return [];
+
+    const decodeLegacyValue = (value = '') => {
+      if (typeof value !== 'string') return { destination: '', subDestination: '' };
+      if (value.includes(':::')) {
+        const [destName, subName = ''] = value.split(':::');
+        return { destination: destName, subDestination: subName };
+      }
+      try {
+        const parsed = JSON.parse(value);
+        return {
+          destination: parsed?.destination || parsed?.name || value,
+          subDestination: parsed?.subDestination || ''
+        };
+      } catch (error) {
+        return { destination: value, subDestination: '' };
+      }
+    };
+
+    return entries
+      .map((entry) => {
+        if (typeof entry === 'string') return decodeLegacyValue(entry);
+        if (entry && typeof entry === 'object') {
+          return {
+            destination: entry.destination || entry.name || '',
+            subDestination: entry.subDestination || ''
+          };
+        }
+        return null;
+      })
+      .filter((item) => item && item.destination)
+      .map((item) => ({
+        destination: item.destination.trim(),
+        subDestination: item.subDestination?.trim() || ''
+      }));
+  }, [currentUserProfile]);
+
+  const assignmentMap = useMemo(() => {
+    const map = new Map();
+    if (normalizedAssignments.length === 0) return map;
+
+    normalizedAssignments.forEach(({ destination: destName, subDestination: sub }) => {
+      const key = destName.trim();
+      if (!key) return;
+      if (!map.has(key)) {
+        map.set(key, { allowAllSubDestinations: false, subDestinations: new Set() });
+      }
+      const bucket = map.get(key);
+      if (!sub) {
+        bucket.allowAllSubDestinations = true;
+        bucket.subDestinations.clear();
+        return;
+      }
+      if (!bucket.allowAllSubDestinations) {
+        bucket.subDestinations.add(sub);
+      }
+    });
+
+    return map;
+  }, [normalizedAssignments]);
+
   const availableDestinations = useMemo(() => {
-    return destinationsCatalog.map((dest) => ({ value: dest.name, label: dest.name }));
-  }, [destinationsCatalog]);
+    if (assignmentMap.size === 0) return [];
+    return Array.from(assignmentMap.keys())
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+      .map((name) => ({ value: name, label: name }));
+  }, [assignmentMap]);
 
   const availableSubDestinations = useMemo(() => {
     if (!destination) return [];
-    return destinationsCatalog.find((dest) => dest.name === destination)?.subDestinations || [];
-  }, [destinationsCatalog, destination]);
+    const catalogEntry = destinationsCatalog.find((dest) => dest.name === destination);
+    const catalogSubDestinations = (catalogEntry?.subDestinations || []).slice().sort((a, b) =>
+      a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
+
+    const assignment = assignmentMap.get(destination);
+    if (!assignment) return [];
+    if (assignment.allowAllSubDestinations) {
+      if (catalogSubDestinations.length > 0) {
+        return catalogSubDestinations;
+      }
+      return Array.from(assignment.subDestinations).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    }
+
+    const filtered = catalogSubDestinations.filter((sub) => assignment.subDestinations.has(sub));
+    if (filtered.length === assignment.subDestinations.size) {
+      return filtered;
+    }
+
+    const missing = Array.from(assignment.subDestinations).filter((sub) => !filtered.includes(sub));
+    return [...filtered, ...missing].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+  }, [destination, destinationsCatalog, assignmentMap]);
+
+  useEffect(() => {
+    if (!destination) return;
+    if (availableSubDestinations.length === 1 && subDestination !== availableSubDestinations[0]) {
+      setSubDestination(availableSubDestinations[0]);
+    } else if (
+      subDestination &&
+      availableSubDestinations.length > 0 &&
+      !availableSubDestinations.includes(subDestination)
+    ) {
+      setSubDestination('');
+    }
+  }, [destination, availableSubDestinations, subDestination]);
+
+  const hasAssignments = assignmentMap.size > 0;
 
   useEffect(() => {
     if (!destination) return;

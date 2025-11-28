@@ -277,11 +277,11 @@ const DashboardPage = () => {
   const totalCoincidencias = differences.matches.length;
 
   const ubicacionOptions = useMemo(() => {
-    const options = ['Todos'];
-    locationsCatalog.forEach((location) => {
-      if (location.name) options.push(location.name);
-    });
-    return options;
+    const names = locationsCatalog
+      .map((location) => location.name)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    return ['Todos', ...names];
   }, [locationsCatalog]);
 
   const destinoOptions = useMemo(() => {

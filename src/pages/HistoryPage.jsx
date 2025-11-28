@@ -116,10 +116,16 @@ const HistoryPage = () => {
     }
   }, [getLocationsCatalog]);
 
-  const destinoOptions = ['Todos', ...destinationsCatalog.map((dest) => dest.name)]
-    .filter(Boolean);
-  const ubicacionOptions = ['Todos', ...locationsCatalog.map((loc) => loc.name)]
-    .filter(Boolean);
+  const destinoOptions = ['Todos', ...destinationsCatalog
+    .map((dest) => dest.name)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+  ];
+  const ubicacionOptions = ['Todos', ...locationsCatalog
+    .map((loc) => loc.name)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+  ];
 
   // Filtrar registros cuando cambia el término de búsqueda o los filtros
   useEffect(() => {

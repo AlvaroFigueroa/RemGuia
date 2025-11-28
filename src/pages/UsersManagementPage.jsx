@@ -160,7 +160,8 @@ const UsersManagementPage = () => {
 
   const roleOptions = useMemo(() => {
     const roles = new Set([...DEFAULT_ROLES, ...users.map((u) => u.role || 'usuario')]);
-    return ['all', ...roles];
+    const sortedRoles = Array.from(roles).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    return ['all', ...sortedRoles];
   }, [users]);
 
   const summary = useMemo(() => {
@@ -305,13 +306,17 @@ const UsersManagementPage = () => {
       });
     });
 
-    return options;
+    return options.sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
   }, [destinationsCatalog]);
 
-  const availableLocations = locationsCatalog.map((location) => ({
-    value: location.name,
-    label: location.name
-  }));
+  const availableLocations = useMemo(() =>
+    locationsCatalog
+      .map((location) => ({
+        value: location.name,
+        label: location.name
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })),
+  [locationsCatalog]);
 
   return (
     <Container maxWidth="md" sx={{ pt: 3, pb: 10 }}>
