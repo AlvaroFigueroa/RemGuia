@@ -17,7 +17,6 @@ import UsersManagementPage from './pages/UsersManagementPage'
 import ScanPage from './pages/ScanPage'
 import HistoryPage from './pages/HistoryPage'
 import ConfigPage from './pages/ConfigPage'
-import DestinationsPage from './pages/DestinationsPage'
 import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
 
@@ -117,10 +116,6 @@ const AppRoutes = () => {
           <Route
             path="/users"
             element={currentUser ? (isAdmin ? <UsersManagementPage /> : <Navigate to="/scan" replace />) : <Navigate to="/login" />}
-          />
-          <Route
-            path="/destinations"
-            element={currentUser ? (isAdmin ? <DestinationsPage /> : <Navigate to="/scan" replace />) : <Navigate to="/login" />}
           />
           <Route path="/config" element={currentUser ? <ConfigPage /> : <Navigate to="/login" />} />
           <Route

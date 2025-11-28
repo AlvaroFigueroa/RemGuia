@@ -14,7 +14,6 @@ const Navigation = () => {
       return [
         { label: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
         { label: 'Usuarios', icon: <Users />, path: '/users' },
-        { label: 'Destinos', icon: <LocationOn />, path: '/destinations' },
         { label: 'Configuración', icon: <Settings />, path: '/config' }
       ];
     }

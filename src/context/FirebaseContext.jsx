@@ -432,31 +432,6 @@ export const FirebaseProvider = ({ children }) => {
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
   };
 
-  const createDestinationCatalog = async ({ name }) => {
-    const trimmedName = name?.trim();
-    if (!trimmedName) throw new Error('El nombre del destino es obligatorio');
-    await addDoc(collection(db, 'destinationsCatalog'), {
-      name: trimmedName,
-      subDestinations: [],
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-  };
-
-  const updateDestinationCatalog = async (id, payload = {}) => {
-    if (!id) throw new Error('ID de destino inválido');
-    const docRef = doc(db, 'destinationsCatalog', id);
-    await updateDoc(docRef, {
-      ...payload,
-      updatedAt: serverTimestamp()
-    });
-  };
-
-  const deleteDestinationCatalog = async (id) => {
-    if (!id) throw new Error('ID de destino inválido');
-    await deleteDoc(doc(db, 'destinationsCatalog', id));
-  };
-
   const getLocationsCatalog = async () => {
     try {
       const sqlLocations = await fetchSqlLocationsCatalog();
@@ -536,9 +511,6 @@ export const FirebaseProvider = ({ children }) => {
     updateUserAccess,
     deleteUserRecord,
     getDestinationsCatalog,
-    createDestinationCatalog,
-    updateDestinationCatalog,
-    deleteDestinationCatalog,
     getLocationsCatalog,
     createLocationCatalog,
     updateLocationCatalog,
