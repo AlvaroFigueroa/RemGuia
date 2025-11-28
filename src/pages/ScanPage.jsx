@@ -616,6 +616,16 @@ const ScanPage = () => {
 
     try {
       const localId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const assignedLocationName = typeof currentUserProfile?.location === 'string'
+        ? currentUserProfile.location.trim()
+        : '';
+      const locationPayload = {
+        latitude: currentLocation?.latitude ?? 'No disponible',
+        longitude: currentLocation?.longitude ?? 'No disponible'
+      };
+      if (assignedLocationName) {
+        locationPayload.alias = assignedLocationName;
+      }
 
       // Crear objeto de registro
       const record = {
@@ -624,7 +634,7 @@ const ScanPage = () => {
         destination,
         subDestination,
         date: new Date().toISOString(),
-        location: currentLocation || { latitude: 'No disponible', longitude: 'No disponible' },
+        location: locationPayload,
         // No guardamos la imagen completa, solo una referencia
         imageCapture: Boolean(image),
         imageData: image || null
