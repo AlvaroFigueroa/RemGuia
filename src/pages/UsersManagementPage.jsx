@@ -437,12 +437,22 @@ const UsersManagementPage = () => {
                       <TableCell>{user.location || '—'}</TableCell>
                       <TableCell>
                         {Array.isArray(user.destinations) && user.destinations.length > 0
-                          ? user.destinations.map((entry, idx) => (
-                              <Typography key={`${entry.destination}-${entry.subDestination || 'none'}-${idx}`} component="span" variant="body2" display="block">
-                                {entry.destination || '—'}
-                                {entry.subDestination ? ` - ${entry.subDestination}` : ''}
-                              </Typography>
-                            ))
+                          ? user.destinations.map((entry, idx) => {
+                              const parsed = typeof entry === 'string'
+                                ? decodeDestinationValue(entry)
+                                : {
+                                    destination: entry?.destination || entry?.name || '',
+                                    subDestination: entry?.subDestination || ''
+                                  };
+                              const destName = parsed.destination || '—';
+                              const subName = parsed.subDestination ? ` - ${parsed.subDestination}` : '';
+                              return (
+                                <Typography key={`${destName}-${parsed.subDestination || 'none'}-${idx}`} component="span" variant="body2" display="block">
+                                  {destName}
+                                  {subName}
+                                </Typography>
+                              );
+                            })
                           : '—'}
                       </TableCell>
                       <TableCell>{formatDate(user.createdAt)}</TableCell>
