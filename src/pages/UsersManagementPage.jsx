@@ -237,6 +237,25 @@ const UsersManagementPage = () => {
       .filter((item) => item?.destination);
   }, []);
 
+  const normalizeDestinationEntry = useCallback((entry) => {
+    if (!entry) return null;
+    if (typeof entry === 'string') {
+      const decoded = decodeDestinationValue(entry);
+      return {
+        destination: decoded.destination || '',
+        subDestination: decoded.subDestination || ''
+      };
+    }
+    if (typeof entry === 'object') {
+      return {
+        destination: entry.destination || entry.name || '',
+        subDestination:
+          entry.subDestination || entry.subdestination || entry.sub_destino || entry.SubDestino || ''
+      };
+    }
+    return null;
+  }, []);
+
   const handleDialogSubmit = async () => {
     const destinationsPayload = normalizedDestinations(formValues.destinations);
     try {
@@ -282,31 +301,19 @@ const UsersManagementPage = () => {
   };
 
   const destinationOptions = useMemo(() => {
-    const seen = new Set();
-    const options = [];
-
+    const optionsMap = new Map();
     destinationsCatalog.forEach((dest, index) => {
       const rawName = typeof dest.name === 'string' ? dest.name.trim() : '';
       const displayName = rawName || `Destino ${dest.id ?? index + 1}`;
-      const baseValue = encodeDestinationValue(displayName, '', dest.id ?? `idx-${index}`);
-
-      if (!seen.has(baseValue)) {
-        seen.add(baseValue);
-        options.push({ value: baseValue, label: displayName });
+      if (!displayName) return;
+      if (!optionsMap.has(displayName)) {
+        optionsMap.set(displayName, encodeDestinationValue(displayName, '', dest.id ?? `idx-${index}`));
       }
-
-      const subDestinations = Array.isArray(dest.subDestinations) ? dest.subDestinations : [];
-      subDestinations.forEach((sub, subIdx) => {
-        const trimmedSub = typeof sub === 'string' ? sub.trim() : String(sub ?? '');
-        const subValue = encodeDestinationValue(displayName, trimmedSub, `${dest.id ?? `idx-${index}`}-sub-${subIdx}`);
-        if (!seen.has(subValue)) {
-          seen.add(subValue);
-          options.push({ value: subValue, label: `${displayName} - ${trimmedSub}` });
-        }
-      });
     });
 
-    return options.sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
+    return Array.from(optionsMap.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
   }, [destinationsCatalog]);
 
   const availableLocations = useMemo(() =>
@@ -438,18 +445,15 @@ const UsersManagementPage = () => {
                       <TableCell>
                         {Array.isArray(user.destinations) && user.destinations.length > 0
                           ? user.destinations.map((entry, idx) => {
-                              const parsed = typeof entry === 'string'
-                                ? decodeDestinationValue(entry)
-                                : {
-                                    destination: entry?.destination || entry?.name || '',
-                                    subDestination: entry?.subDestination || ''
-                                  };
-                              const destName = parsed.destination || '—';
-                              const subName = parsed.subDestination ? ` - ${parsed.subDestination}` : '';
+                              const normalizedEntry = normalizeDestinationEntry(entry);
+                              if (!normalizedEntry?.destination) {
+                                return null;
+                              }
+                              const key = `${normalizedEntry.destination}-${normalizedEntry.subDestination || 'none'}-${idx}`;
                               return (
-                                <Typography key={`${destName}-${parsed.subDestination || 'none'}-${idx}`} component="span" variant="body2" display="block">
-                                  {destName}
-                                  {subName}
+                                <Typography key={key} component="span" variant="body2" display="block">
+                                  {normalizedEntry.destination}
+                                  {normalizedEntry.subDestination ? ` - ${normalizedEntry.subDestination}` : ''}
                                 </Typography>
                               );
                             })
