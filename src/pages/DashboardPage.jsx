@@ -63,7 +63,7 @@ const normalizeGuide = (guide, fallback = {}) => {
 
   return {
     guideNumber,
-    ubicacion: guide?.ubicacion ?? guide?.location ?? fallback.ubicacion ?? 'No definida',
+    ubicacion: guide?.ubicacion ?? guide?.location ?? fallback.ubicacion ?? 'No definido',
     destino: guide?.destino ?? guide?.destination ?? fallback.destino ?? 'No definido',
     subDestino,
     date: guide?.date ?? guide?.fecha ?? guide?.createdAt ?? null,
@@ -196,7 +196,7 @@ const DashboardPage = () => {
 
     const response = await fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${params.toString()}`);
     if (!response.ok) {
-      throw new Error('No se pudieron obtener las guías de ubicación (SQL).');
+      throw new Error('No se pudieron obtener las guías de origen (SQL).');
     }
 
     const data = await response.json();
@@ -288,8 +288,8 @@ const DashboardPage = () => {
       const data = await getLocationsCatalog();
       setLocationsCatalog(data);
     } catch (error) {
-      console.error('Error al cargar ubicaciones:', error);
-      setCatalogError('No se pudieron cargar las ubicaciones disponibles.');
+      console.error('Error al cargar orígenes:', error);
+      setCatalogError('No se pudieron cargar los orígenes disponibles.');
     } finally {
       setCatalogLoading((prev) => ({ ...prev, locations: false }));
     }
@@ -352,7 +352,7 @@ const DashboardPage = () => {
             </Box>
             <Typography variant="body2">Destino: {guide.destino || 'No definido'}</Typography>
             <Typography variant="body2">Subdestino: {guide.subDestino || 'No definido'}</Typography>
-            <Typography variant="body2">Ubicación: {getLocationLabel(guide)}</Typography>
+            <Typography variant="body2">Origen: {getLocationLabel(guide)}</Typography>
             <Typography variant="body2" color="text.secondary">
               {formatDate(guide.date)}
             </Typography>
@@ -393,15 +393,15 @@ const DashboardPage = () => {
               <Chip size="small" label="Coincidencia" color="success" variant="outlined" />
             </Box>
             <Typography variant="body2">Subdestino: {match.subDestino || 'No definido'}</Typography>
-            <Typography variant="body2" fontWeight={600}>Ubicación</Typography>
+            <Typography variant="body2" fontWeight={600}>Origen</Typography>
             <Typography variant="body2">Destino: {match.sql?.destino || 'No definido'}</Typography>
-            <Typography variant="body2">Ubicación: {getLocationLabel(match.sql)}</Typography>
+            <Typography variant="body2">Origen: {getLocationLabel(match.sql)}</Typography>
             <Typography variant="body2" color="text.secondary">
               {formatDate(match.sql?.date)}
             </Typography>
             <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>Destino</Typography>
             <Typography variant="body2">Destino: {match.firestore?.destino || match.firestore?.destination || 'No definido'}</Typography>
-            <Typography variant="body2">Ubicación: {getLocationLabel(match.firestore)}</Typography>
+            <Typography variant="body2">Origen: {getLocationLabel(match.firestore)}</Typography>
             <Typography variant="body2" color="text.secondary">
               {formatDate(match.firestore?.date)}
             </Typography>
@@ -493,7 +493,7 @@ const DashboardPage = () => {
           </Grid>
           <Grid item xs={12} sm={6}>
             <TextField
-              label="Ubicación"
+              label="Origen"
               select
               fullWidth
               value={filters.ubicacion}
@@ -567,7 +567,7 @@ const DashboardPage = () => {
           }}
         >
           <Typography variant="subtitle2" color="text.secondary">
-            Guías desde Ubicación
+            Guías desde Origen
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <LocationOn />
@@ -667,7 +667,7 @@ const DashboardPage = () => {
         <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
           <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="h6">SQL - Guías por Ubicación</Typography>
+              <Typography variant="h6">SQL - Guías por Origen</Typography>
               <Chip label={`${ubicacionGuides.length} guías`} color="default" />
             </Box>
             {ubicacionGuides.length === 0 ? (
@@ -703,7 +703,7 @@ const DashboardPage = () => {
                               {formatDate(guide.date)}
                             </Typography>
                             <Typography component="span" variant="body2" display="block">
-                              Ubicación: {guide.ubicacion || 'No definida'}
+                              Origen: {guide.ubicacion || 'No definido'}
                             </Typography>
                             <Typography component="span" variant="body2" display="block">
                               Subdestino: {guide.subDestino || 'No definido'}
@@ -762,7 +762,7 @@ const DashboardPage = () => {
                             <Box component="div" sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                               <Typography variant="body2" component="span"><strong>Destino:</strong> {record.destination || 'No registrado'}</Typography>
                               <Typography variant="body2" component="span"><strong>Subdestino:</strong> {record.subDestination || 'No registrado'}</Typography>
-                              <Typography variant="body2" component="span"><strong>Ubicación:</strong> {record.location?.alias || record.location?.name || 'No registrada'}</Typography>
+                              <Typography variant="body2" component="span"><strong>Origen:</strong> {record.location?.alias || record.location?.name || 'No registrado'}</Typography>
                               <Box component="div" sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                                 <Typography component="span" variant="body2" color="text.secondary">
                                   {formatDate(record.date || guide.date)}
@@ -823,12 +823,12 @@ const DashboardPage = () => {
           <Stack spacing={3}>
             <Box>
               <Typography variant="subtitle1" gutterBottom>
-                Solo en Ubicación
+                Solo en Origen
               </Typography>
               {renderGuideList(
                 differences.missingInDestino,
-                'Ubicación',
-                'No hay guías exclusivas de Ubicación en este rango.',
+                'Origen',
+                'No hay guías exclusivas de Origen en este rango.',
                 'warning',
                 'rgba(255, 167, 38, 0.12)'
               )}

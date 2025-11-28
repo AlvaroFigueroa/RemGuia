@@ -538,8 +538,8 @@ const ScanPage = () => {
     setAutoCaptureEnabled(true);
   };
 
-  // Función para obtener la ubicación actual
-  // Función para obtener la ubicación como una promesa
+  // Función para obtener el origen actual
+  // Función para obtener el origen como una promesa
   const getLocation = useCallback(() => {
     return new Promise((resolve, reject) => {
       if (navigator.geolocation) {
@@ -560,7 +560,7 @@ const ScanPage = () => {
               setLocation(stored);
               resolve(stored);
             } else {
-              reject('No se pudo obtener la ubicación');
+              reject('No se pudo obtener el origen');
             }
           },
           { timeout: 10000, enableHighAccuracy: true } // Opciones para mejorar la precisión
@@ -577,11 +577,11 @@ const ScanPage = () => {
     });
   }, [getStoredLocation, persistLocation]);
   
-  // Actualizar ubicación al cargar la página
+  // Actualizar origen al cargar la página
   useEffect(() => {
-    // Intentar obtener ubicación al inicio
+    // Intentar obtener origen al inicio
     getLocation().catch(error => {
-      console.warn('Error inicial de ubicación:', error);
+      console.warn('Error inicial de origen:', error);
       // No mostramos error al usuario en este punto para no interrumpir la experiencia
     });
   }, []);
@@ -627,13 +627,13 @@ const ScanPage = () => {
 
     let currentLocation = location;
     
-    // Obtener ubicación si no se ha obtenido aún
+    // Obtener origen si no se ha obtenido aún
     if (!currentLocation) {
       try {
         currentLocation = await getLocation();
       } catch (locationError) {
-        console.warn('No se pudo obtener la ubicación:', locationError);
-        // Continuamos con el guardado aunque no tengamos ubicación
+        console.warn('No se pudo obtener el origen:', locationError);
+        // Continuamos con el guardado aunque no tengamos origen
       }
     }
 
@@ -995,7 +995,7 @@ const ScanPage = () => {
           onClick={getLocation}
           disabled={isLoading}
         >
-          Actualizar Ubicación
+          Actualizar Origen
         </Button>
       </Stack>
     </Container>

@@ -297,8 +297,8 @@ const HistoryPage = () => {
                           <Box component="span" display="flex" alignItems="center" gap={1}>
                             <Typography component="span" variant="body2" sx={{ flex: 1 }}>
                               {record.location.latitude !== 'No disponible' 
-                                ? `Ubicación registrada`
-                                : 'Ubicación no disponible'
+                                ? `Origen registrado`
+                                : 'Origen no disponible'
                               }
                             </Typography>
                             {record.location.latitude !== 'No disponible' && (

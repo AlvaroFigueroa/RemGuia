@@ -413,7 +413,7 @@ const UsersManagementPage = () => {
                   <TableCell>Nombre</TableCell>
                   <TableCell>Correo</TableCell>
                   <TableCell>Rol</TableCell>
-                  <TableCell>Ubicación</TableCell>
+                  <TableCell>Origen</TableCell>
                   <TableCell>Destinos asignados</TableCell>
                   <TableCell>Creado</TableCell>
                   <TableCell>Actualizado</TableCell>
@@ -532,13 +532,13 @@ const UsersManagementPage = () => {
             ))}
           </TextField>
           <TextField
-            label="Ubicación"
+            label="Origen"
             select
             value={formValues.location}
             onChange={(e) => setFormValues((prev) => ({ ...prev, location: e.target.value }))}
             disabled={catalogsLoading.locations}
           >
-            <MenuItem value="">Sin ubicación</MenuItem>
+            <MenuItem value="">Sin origen</MenuItem>
             {availableLocations.map((location) => (
               <MenuItem key={location.value} value={location.value}>
                 {location.label}
@@ -602,14 +602,14 @@ const UsersManagementPage = () => {
             ))}
           </TextField>
           <TextField
-            label="Ubicación"
+            label="Origen"
             select
             fullWidth
             value={formValues.location}
             onChange={(e) => setFormValues((prev) => ({ ...prev, location: e.target.value }))}
             disabled={catalogsLoading.locations}
           >
-            <MenuItem value="">Sin ubicación</MenuItem>
+            <MenuItem value="">Sin origen</MenuItem>
             {availableLocations.map((location) => (
               <MenuItem key={location.value} value={location.value}>
                 {location.label}

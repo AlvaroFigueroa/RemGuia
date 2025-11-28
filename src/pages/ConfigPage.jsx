@@ -85,12 +85,12 @@ const ConfigPage = () => {
         navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
       });
       setLocationPermission('granted');
-      setSnackbarMessage('Permiso de ubicación concedido.');
+      setSnackbarMessage('Permiso de origen concedido.');
       setSnackbarOpen(true);
     } catch (error) {
-      console.warn('Permiso de ubicación denegado:', error);
+      console.warn('Permiso de origen denegado:', error);
       setLocationPermission('denied');
-      setSnackbarMessage('No se pudo acceder a la ubicación. Revisa los permisos del navegador.');
+      setSnackbarMessage('No se pudo acceder al origen. Revisa los permisos del navegador.');
       setSnackbarOpen(true);
     } finally {
       setPermissionLoading(prev => ({ ...prev, location: false }));
@@ -325,7 +325,7 @@ const ConfigPage = () => {
               <LocationOn />
             </ListItemIcon>
             <ListItemText 
-              primary="Acceso a ubicación" 
+              primary="Acceso a origen" 
               secondary={
                 locationPermission === 'granted'
                   ? 'Permiso concedido'
@@ -352,7 +352,7 @@ const ConfigPage = () => {
             </ListItemIcon>
             <ListItemText 
               primary="Usar GPS" 
-              secondary="Registrar ubicación al escanear guías"
+              secondary="Registrar origen al escanear guías"
             />
             <Switch
               edge="end"
