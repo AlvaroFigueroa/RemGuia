@@ -381,6 +381,37 @@ export const FirebaseProvider = ({ children }) => {
   // Catálogo de destinos y ubicaciones
   const mapTimestamp = (value) => (value?.toDate ? value.toDate() : value || null);
 
+  const isBrowser = typeof window !== 'undefined';
+  const CACHE_KEYS = {
+    destinations: 'remfisc:cache:destinations',
+    locations: 'remfisc:cache:locations'
+  };
+
+  const readCache = useCallback((key) => {
+    if (!isBrowser) return null;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed?.data)) return null;
+      return parsed.data;
+    } catch (error) {
+      console.warn('No se pudo leer el caché local', error);
+      return null;
+    }
+  }, [isBrowser]);
+
+  const writeCache = useCallback((key, data) => {
+    if (!isBrowser || !Array.isArray(data)) return;
+    try {
+      localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+    } catch (error) {
+      console.warn('No se pudo guardar el caché local', error);
+    }
+  }, [isBrowser]);
+
+  const isOnline = () => (typeof navigator !== 'undefined' ? navigator.onLine : true);
+
   const fetchSqlDestinationsCatalog = useCallback(async () => {
     const response = await fetch(`${transporteApiBaseUrl}/destinos_with_subdestinos.php`);
     if (!response.ok) {
@@ -412,48 +443,93 @@ export const FirebaseProvider = ({ children }) => {
   }, [transporteApiBaseUrl]);
 
   const getDestinationsCatalog = async () => {
+    const cached = readCache(CACHE_KEYS.destinations);
+    if (!isOnline() && cached) {
+      return cached;
+    }
+
     try {
-      return await fetchSqlDestinationsCatalog();
+      const sqlData = await fetchSqlDestinationsCatalog();
+      writeCache(CACHE_KEYS.destinations, sqlData);
+      return sqlData;
     } catch (sqlError) {
       console.warn('Fallo al cargar destinos desde SQL, usando Firestore como respaldo:', sqlError);
     }
-    const snapshot = await getDocs(collection(db, 'destinationsCatalog'));
-    return snapshot.docs
-      .map((docItem) => {
-        const data = docItem.data();
-        return {
-          id: docItem.id,
-          name: data.name || '',
-          subDestinations: Array.isArray(data.subDestinations) ? data.subDestinations : [],
-          createdAt: mapTimestamp(data.createdAt),
-          updatedAt: mapTimestamp(data.updatedAt)
-        };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+
+    try {
+      const snapshot = await getDocs(collection(db, 'destinationsCatalog'));
+      const fallback = snapshot.docs
+        .map((docItem) => {
+          const data = docItem.data();
+          return {
+            id: docItem.id,
+            name: data.name || '',
+            subDestinations: Array.isArray(data.subDestinations) ? data.subDestinations : [],
+            createdAt: mapTimestamp(data.createdAt),
+            updatedAt: mapTimestamp(data.updatedAt)
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      if (fallback.length > 0) {
+        writeCache(CACHE_KEYS.destinations, fallback);
+      }
+      if (fallback.length === 0 && cached) {
+        return cached;
+      }
+      return fallback;
+    } catch (firestoreError) {
+      console.error('Error al cargar destinos desde Firestore:', firestoreError);
+      if (cached) {
+        return cached;
+      }
+      throw firestoreError;
+    }
   };
 
   const getLocationsCatalog = async () => {
+    const cached = readCache(CACHE_KEYS.locations);
+    if (!isOnline() && cached) {
+      return cached;
+    }
+
     try {
       const sqlLocations = await fetchSqlLocationsCatalog();
       if (sqlLocations.length > 0) {
-        return sqlLocations.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+        const sorted = sqlLocations.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+        writeCache(CACHE_KEYS.locations, sorted);
+        return sorted;
       }
     } catch (sqlError) {
       console.warn('Fallo al cargar ubicaciones desde SQL, usando Firestore como respaldo:', sqlError);
     }
 
-    const snapshot = await getDocs(collection(db, 'locationsCatalog'));
-    return snapshot.docs
-      .map((docItem) => {
-        const data = docItem.data();
-        return {
-          id: docItem.id,
-          name: data.name || '',
-          createdAt: mapTimestamp(data.createdAt),
-          updatedAt: mapTimestamp(data.updatedAt)
-        };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+    try {
+      const snapshot = await getDocs(collection(db, 'locationsCatalog'));
+      const fallback = snapshot.docs
+        .map((docItem) => {
+          const data = docItem.data();
+          return {
+            id: docItem.id,
+            name: data.name || '',
+            createdAt: mapTimestamp(data.createdAt),
+            updatedAt: mapTimestamp(data.updatedAt)
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      if (fallback.length > 0) {
+        writeCache(CACHE_KEYS.locations, fallback);
+      }
+      if (fallback.length === 0 && cached) {
+        return cached;
+      }
+      return fallback;
+    } catch (firestoreError) {
+      console.error('Error al cargar ubicaciones desde Firestore:', firestoreError);
+      if (cached) {
+        return cached;
+      }
+      throw firestoreError;
+    }
   };
 
   const createLocationCatalog = async ({ name }) => {
