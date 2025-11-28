@@ -235,6 +235,10 @@ const ScanPage = () => {
 
   useEffect(() => {
     if (!destination) return;
+    if (availableSubDestinations.length === 0 && subDestination) {
+      setSubDestination('');
+      return;
+    }
     if (availableSubDestinations.length === 1 && subDestination !== availableSubDestinations[0]) {
       setSubDestination(availableSubDestinations[0]);
     } else if (
@@ -247,6 +251,7 @@ const ScanPage = () => {
   }, [destination, availableSubDestinations, subDestination]);
 
   const hasAssignments = assignmentMap.size > 0;
+  const showSubDestinoSelect = destination && availableSubDestinations.length > 0;
 
   useEffect(() => {
     if (!destination) return;
@@ -590,11 +595,10 @@ const ScanPage = () => {
       updateError('Selecciona un destino para continuar', { visible: true });
       return;
     }
-    if (!subDestination) {
+    if (showSubDestinoSelect && !subDestination) {
       updateError('Selecciona un subdestino para continuar', { visible: true });
       return;
     }
-
     setIsLoading(true);
     updateError('', { visible: false });
 
@@ -828,25 +832,27 @@ const ScanPage = () => {
                 ))}
               </TextField>
             </Box>
-            <Box sx={{ mb: 2 }}>
-              <TextField
-                label="SubDestino"
-                select
-                fullWidth
-                value={subDestination}
-                onChange={(e) => setSubDestination(e.target.value)}
-                helperText={destination ? 'Selecciona el subdestino' : 'Selecciona primero un destino'}
-                disabled={!destination || destinationsLoading}
-              >
-                <MenuItem value="">Selecciona un subdestino</MenuItem>
-                {destination &&
-                  availableSubDestinations.map((sub) => (
-                    <MenuItem key={sub} value={sub}>
-                      {sub}
-                    </MenuItem>
-                  ))}
-              </TextField>
-            </Box>
+            {showSubDestinoSelect && (
+              <Box sx={{ mb: 2 }}>
+                <TextField
+                  label="SubDestino"
+                  select
+                  fullWidth
+                  value={subDestination}
+                  onChange={(e) => setSubDestination(e.target.value)}
+                  helperText="Selecciona el subdestino"
+                  disabled={!destination || destinationsLoading}
+                >
+                  <MenuItem value="">Sin subdestino</MenuItem>
+                  {destination &&
+                    availableSubDestinations.map((sub) => (
+                      <MenuItem key={sub} value={sub}>
+                        {sub}
+                      </MenuItem>
+                    ))}
+                </TextField>
+              </Box>
+            )}
           </>
         )}
 
@@ -855,7 +861,7 @@ const ScanPage = () => {
           color="primary"
           startIcon={<Save />}
           fullWidth
-          disabled={!extractedGuide || !destination || !subDestination || isLoading || isProcessing}
+          disabled={!extractedGuide || !destination || isLoading || isProcessing}
           onClick={saveRecord}
         >
           {isLoading ? <CircularProgress size={24} /> : 'Guardar Registro'}
