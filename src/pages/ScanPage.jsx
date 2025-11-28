@@ -12,12 +12,13 @@ import Tesseract from 'tesseract.js';
 import { useFirebase } from '../context/FirebaseContext';
 
 const ScanPage = () => {
-  const { saveGuideRecord, currentUser, currentUserProfile, getDestinationsCatalog } = useFirebase();
+  const { saveGuideRecord, currentUser, currentUserProfile, getDestinationsCatalog, guideExists } = useFirebase();
   const [image, setImage] = useState(null);
   const [extractedGuide, setExtractedGuide] = useState('');
   const [destination, setDestination] = useState('');
   const [subDestination, setSubDestination] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingGuide, setIsCheckingGuide] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
   const [errorVisible, setErrorVisible] = useState(false);
@@ -599,6 +600,28 @@ const ScanPage = () => {
       updateError('Selecciona un subdestino para continuar', { visible: true });
       return;
     }
+
+    const normalizedGuide = extractedGuide.trim();
+    if (!normalizedGuide) {
+      updateError('El número de guía es inválido.', { visible: true });
+      return;
+    }
+
+    setIsCheckingGuide(true);
+    try {
+      const alreadyExists = await guideExists(normalizedGuide);
+      if (alreadyExists) {
+        updateError(`La guía ${normalizedGuide} ya fue registrada. Escanea una nueva guía.`, { visible: true });
+        setIsCheckingGuide(false);
+        return;
+      }
+    } catch (dupError) {
+      updateError('No se pudo verificar si la guía está duplicada. Intenta nuevamente.', { visible: true });
+      console.error('Error al validar duplicado de guía:', dupError);
+      setIsCheckingGuide(false);
+      return;
+    }
+    setIsCheckingGuide(false);
     setIsLoading(true);
     updateError('', { visible: false });
 
@@ -871,10 +894,10 @@ const ScanPage = () => {
           color="primary"
           startIcon={<Save />}
           fullWidth
-          disabled={!extractedGuide || !destination || isLoading || isProcessing}
+          disabled={!extractedGuide || !destination || isLoading || isProcessing || isCheckingGuide}
           onClick={saveRecord}
         >
-          {isLoading ? <CircularProgress size={24} /> : 'Guardar Registro'}
+          {isLoading || isCheckingGuide ? <CircularProgress size={24} /> : 'Guardar Registro'}
         </Button>
       </Paper>
 

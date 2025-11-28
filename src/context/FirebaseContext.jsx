@@ -378,6 +378,20 @@ export const FirebaseProvider = ({ children }) => {
     await deleteDoc(doc(db, 'users', uid));
   };
 
+  const guideExists = useCallback(async (guideNumber) => {
+    const normalized = guideNumber?.trim();
+    if (!normalized) return false;
+    try {
+      const guidesRef = collection(db, 'guideRecords');
+      const guidesQuery = query(guidesRef, where('guideNumber', '==', normalized));
+      const snapshot = await getDocs(guidesQuery);
+      return !snapshot.empty;
+    } catch (error) {
+      console.error('Error al verificar número de guía duplicado:', error);
+      throw error;
+    }
+  }, []);
+
   // Catálogo de destinos y ubicaciones
   const mapTimestamp = (value) => (value?.toDate ? value.toDate() : value || null);
 
@@ -591,6 +605,7 @@ export const FirebaseProvider = ({ children }) => {
     createLocationCatalog,
     updateLocationCatalog,
     deleteLocationCatalog,
+    guideExists,
     createManagedUser,
     fetchSqlDestinationsCatalog,
     loading,
