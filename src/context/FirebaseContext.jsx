@@ -393,6 +393,24 @@ export const FirebaseProvider = ({ children }) => {
     return Array.isArray(payload.data) ? payload.data : [];
   }, [transporteApiBaseUrl]);
 
+  const fetchSqlLocationsCatalog = useCallback(async () => {
+    const response = await fetch(`${transporteApiBaseUrl}/ubicaciones.php`);
+    if (!response.ok) {
+      throw new Error('No se pudieron obtener las ubicaciones desde el servidor SQL');
+    }
+    const payload = await response.json();
+    if (!payload?.success) {
+      throw new Error(payload?.message || 'Respuesta inválida del servidor de ubicaciones');
+    }
+    const rawData = Array.isArray(payload.data) ? payload.data : [];
+    return rawData
+      .map((item, index) => ({
+        id: item.id ?? `sql-${index + 1}`,
+        name: typeof item.name === 'string' ? item.name.trim() : ''
+      }))
+      .filter((item) => item.name);
+  }, [transporteApiBaseUrl]);
+
   const getDestinationsCatalog = async () => {
     try {
       return await fetchSqlDestinationsCatalog();
@@ -440,6 +458,15 @@ export const FirebaseProvider = ({ children }) => {
   };
 
   const getLocationsCatalog = async () => {
+    try {
+      const sqlLocations = await fetchSqlLocationsCatalog();
+      if (sqlLocations.length > 0) {
+        return sqlLocations.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      }
+    } catch (sqlError) {
+      console.warn('Fallo al cargar ubicaciones desde SQL, usando Firestore como respaldo:', sqlError);
+    }
+
     const snapshot = await getDocs(collection(db, 'locationsCatalog'));
     return snapshot.docs
       .map((docItem) => {
