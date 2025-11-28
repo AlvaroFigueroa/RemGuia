@@ -35,6 +35,7 @@ $endDate->setTime(23, 59, 59);
 
 $ubicacion = isset($_GET['ubicacion']) ? trim($_GET['ubicacion']) : null;
 $destino = isset($_GET['destino']) ? trim($_GET['destino']) : null;
+$subDestino = isset($_GET['subDestino']) ? trim($_GET['subDestino']) : null;
 
 try {
     $mysqli = get_db_connection();
@@ -65,6 +66,12 @@ if ($destino && strcasecmp($destino, 'Todos') !== 0) {
     $conditions[] = 'destino LIKE ?';
     $types .= 's';
     $params[] = '%' . $destino . '%';
+}
+
+if ($subDestino && strcasecmp($subDestino, 'Todos') !== 0) {
+    $conditions[] = 'subDestino LIKE ?';
+    $types .= 's';
+    $params[] = '%' . $subDestino . '%';
 }
 
 if ($conditions) {

@@ -46,6 +46,7 @@ const normalizeGuide = (guide, fallback = {}) => {
 
   const subDestino =
     guide?.subDestination ??
+    guide?.subDestino ??
     guide?.subDest ??
     guide?.subdestino ??
     guide?.SubDestino ??
@@ -65,6 +66,12 @@ const normalizeGuide = (guide, fallback = {}) => {
     date: guide?.date ?? guide?.fecha ?? guide?.createdAt ?? null,
     rawRecord: guide
   };
+};
+
+const buildGuideKey = (guide) => {
+  const guideNumber = guide?.guideNumber ? String(guide.guideNumber).trim() : '';
+  const subDestino = guide?.subDestino ? String(guide.subDestino).trim().toLowerCase() : '';
+  return `${guideNumber}||${subDestino}`;
 };
 
 const formatDate = (value) => {
@@ -162,7 +169,7 @@ const DashboardPage = () => {
     if (range.endDate) params.append('endDate', range.endDate);
     if (range.ubicacion && range.ubicacion !== 'Todos') params.append('ubicacion', range.ubicacion);
     if (range.destino && range.destino !== 'Todos') params.append('destino', range.destino);
-    if (range.subDestino && range.subDestino !== 'Todos') params.append('subdestino', range.subDestino);
+    if (range.subDestino && range.subDestino !== 'Todos') params.append('subDestino', range.subDestino);
 
     const response = await fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${params.toString()}`);
     if (!response.ok) {
@@ -190,16 +197,16 @@ const DashboardPage = () => {
   }, [transporteApiBaseUrl]);
 
   const compareGuides = useCallback((ubicacion, destino) => {
-    const destinoSet = new Set(destino.map((guide) => guide.guideNumber));
-    const ubicacionSet = new Set(ubicacion.map((guide) => guide.guideNumber));
+    const destinoKeySet = new Set(destino.map((guide) => buildGuideKey(guide)));
+    const ubicacionKeySet = new Set(ubicacion.map((guide) => buildGuideKey(guide)));
 
-    const missingInDestino = ubicacion.filter((guide) => !destinoSet.has(guide.guideNumber));
-    const missingInUbicacion = destino.filter((guide) => !ubicacionSet.has(guide.guideNumber));
+    const missingInDestino = ubicacion.filter((guide) => !destinoKeySet.has(buildGuideKey(guide)));
+    const missingInUbicacion = destino.filter((guide) => !ubicacionKeySet.has(buildGuideKey(guide)));
     const matches = Array.from(
       new Set(
         destino
-          .filter((guide) => guide.guideNumber && ubicacionSet.has(guide.guideNumber))
-          .map((guide) => guide.guideNumber)
+          .filter((guide) => guide.guideNumber && ubicacionKeySet.has(buildGuideKey(guide)))
+          .map((guide) => buildGuideKey(guide))
       )
     );
 
@@ -560,6 +567,9 @@ const DashboardPage = () => {
                             </Typography>
                             <Typography component="span" variant="body2" display="block">
                               Ubicación: {guide.ubicacion || 'No definida'}
+                            </Typography>
+                            <Typography component="span" variant="body2" display="block">
+                              Subdestino: {guide.subDestino || 'No definido'}
                             </Typography>
                           </>
                         }
