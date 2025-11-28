@@ -393,13 +393,13 @@ const DashboardPage = () => {
               <Chip size="small" label="Coincidencia" color="success" variant="outlined" />
             </Box>
             <Typography variant="body2">Subdestino: {match.subDestino || 'No definido'}</Typography>
-            <Typography variant="body2" fontWeight={600}>SQL</Typography>
+            <Typography variant="body2" fontWeight={600}>Ubicación</Typography>
             <Typography variant="body2">Destino: {match.sql?.destino || 'No definido'}</Typography>
             <Typography variant="body2">Ubicación: {getLocationLabel(match.sql)}</Typography>
             <Typography variant="body2" color="text.secondary">
               {formatDate(match.sql?.date)}
             </Typography>
-            <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>Firestore</Typography>
+            <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>Destino</Typography>
             <Typography variant="body2">Destino: {match.firestore?.destino || match.firestore?.destination || 'No definido'}</Typography>
             <Typography variant="body2">Ubicación: {getLocationLabel(match.firestore)}</Typography>
             <Typography variant="body2" color="text.secondary">
@@ -823,24 +823,24 @@ const DashboardPage = () => {
           <Stack spacing={3}>
             <Box>
               <Typography variant="subtitle1" gutterBottom>
-                Solo en SQL (Ubicación)
+                Solo en Ubicación
               </Typography>
               {renderGuideList(
                 differences.missingInDestino,
-                'SQL',
-                'No hay guías exclusivas de SQL en este rango.',
+                'Ubicación',
+                'No hay guías exclusivas de Ubicación en este rango.',
                 'warning',
                 'rgba(255, 167, 38, 0.12)'
               )}
             </Box>
             <Box>
               <Typography variant="subtitle1" gutterBottom>
-                Solo en Firestore (Destino)
+                Solo en Destino
               </Typography>
               {renderGuideList(
                 differences.missingInUbicacion,
-                'Firestore',
-                'No hay guías exclusivas de Firestore en este rango.',
+                'Destino',
+                'No hay guías exclusivas de Destino en este rango.',
                 'primary',
                 'rgba(33, 150, 243, 0.12)'
               )}
