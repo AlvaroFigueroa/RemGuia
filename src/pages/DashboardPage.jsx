@@ -38,6 +38,22 @@ const isoDate = (date) => {
 };
 const today = new Date();
 
+const toComparableText = (value) => {
+  if (typeof value === 'string') return value.toLowerCase();
+  if (value == null) return '';
+  try {
+    return String(value).toLowerCase();
+  } catch (error) {
+    console.warn('No se pudo normalizar el valor para comparación:', error, value);
+    return '';
+  }
+};
+
+const matchesFilter = (value, filterValue) => {
+  if (!filterValue || filterValue === 'Todos') return true;
+  return toComparableText(value).includes(toComparableText(filterValue));
+};
+
 const normalizeGuide = (guide, fallback = {}) => {
   const guideNumber = String(
     guide?.guideNumber ??
@@ -58,6 +74,7 @@ const normalizeGuide = (guide, fallback = {}) => {
     guide?.SubDesGDNorte ??
     guide?.subD413884 ??
     guide?.subD416335 ??
+    guide?.subD417998 ??
     fallback.subDestino ??
     '';
 
@@ -174,12 +191,9 @@ const DashboardPage = () => {
     }));
 
     const filtered = filterByRange(normalized, range).filter((guide) => {
-      const destinoMatches = range.destino === 'Todos'
-        || guide.destino?.toLowerCase()?.includes(range.destino.toLowerCase());
-      const ubicacionMatches = range.ubicacion === 'Todos'
-        || guide.ubicacion?.toLowerCase()?.includes(range.ubicacion.toLowerCase());
-      const subDestinoMatches = range.subDestino === 'Todos'
-        || guide.subDestino?.toLowerCase()?.includes(range.subDestino.toLowerCase());
+      const destinoMatches = matchesFilter(guide.destino, range.destino);
+      const ubicacionMatches = matchesFilter(guide.ubicacion, range.ubicacion);
+      const subDestinoMatches = matchesFilter(guide.subDestino, range.subDestino);
       return destinoMatches && ubicacionMatches && subDestinoMatches;
     });
 
@@ -209,12 +223,9 @@ const DashboardPage = () => {
     const normalized = records.map((record) => normalizeGuide(record));
 
     return normalized.filter((guide) => {
-      const destinoMatches = range.destino === 'Todos'
-        || guide.destino?.toLowerCase()?.includes(range.destino.toLowerCase());
-      const ubicacionMatches = range.ubicacion === 'Todos'
-        || guide.ubicacion?.toLowerCase()?.includes(range.ubicacion.toLowerCase());
-      const subDestinoMatches = range.subDestino === 'Todos'
-        || guide.subDestino?.toLowerCase()?.includes(range.subDestino.toLowerCase());
+      const destinoMatches = matchesFilter(guide.destino, range.destino);
+      const ubicacionMatches = matchesFilter(guide.ubicacion, range.ubicacion);
+      const subDestinoMatches = matchesFilter(guide.subDestino, range.subDestino);
       return destinoMatches && ubicacionMatches && subDestinoMatches;
     });
   }, [transporteApiBaseUrl]);

@@ -396,9 +396,10 @@ export const FirebaseProvider = ({ children }) => {
   const mapTimestamp = (value) => (value?.toDate ? value.toDate() : value || null);
 
   const isBrowser = typeof window !== 'undefined';
+  const CACHE_VERSION = 2;
   const CACHE_KEYS = {
-    destinations: 'remfisc:cache:destinations',
-    locations: 'remfisc:cache:locations'
+    destinations: `remfisc:cache:v${CACHE_VERSION}:destinations`,
+    locations: `remfisc:cache:v${CACHE_VERSION}:locations`
   };
 
   const readCache = useCallback((key) => {
@@ -407,6 +408,9 @@ export const FirebaseProvider = ({ children }) => {
       const raw = localStorage.getItem(key);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
+      if (parsed?.version !== CACHE_VERSION) {
+        return null;
+      }
       if (!Array.isArray(parsed?.data)) return null;
       return parsed.data;
     } catch (error) {
@@ -418,7 +422,7 @@ export const FirebaseProvider = ({ children }) => {
   const writeCache = useCallback((key, data) => {
     if (!isBrowser || !Array.isArray(data)) return;
     try {
-      localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+      localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now(), version: CACHE_VERSION }));
     } catch (error) {
       console.warn('No se pudo guardar el caché local', error);
     }
