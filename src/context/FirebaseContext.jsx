@@ -139,6 +139,29 @@ export const FirebaseProvider = ({ children }) => {
     }
   };
 
+  const updateGuideRecord = async (guideId, payload = {}) => {
+    if (!guideId) {
+      throw new Error('ID de guía inválido');
+    }
+
+    const docRef = doc(db, 'guideRecords', guideId);
+    const sanitizedPayload = {
+      updatedAt: serverTimestamp()
+    };
+
+    if (typeof payload.date !== 'undefined') {
+      sanitizedPayload.date = payload.date;
+    }
+    if (typeof payload.destination !== 'undefined') {
+      sanitizedPayload.destination = payload.destination;
+    }
+    if (typeof payload.subDestination !== 'undefined') {
+      sanitizedPayload.subDestination = payload.subDestination;
+    }
+
+    await updateDoc(docRef, sanitizedPayload);
+  };
+
   const getGuideRecords = async () => {
     try {
       const userId = currentUser?.uid;
@@ -597,6 +620,7 @@ export const FirebaseProvider = ({ children }) => {
     logout,
     saveGuideRecord,
     getGuideRecords,
+    updateGuideRecord,
     uploadPDF,
     syncLocalRecords,
     syncPendingRecords,

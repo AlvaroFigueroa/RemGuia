@@ -21,7 +21,14 @@ import {
   DialogTitle,
   DialogActions,
   IconButton,
-  Tooltip
+  Tooltip,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  InputAdornment
 } from '@mui/material';
 import { useFirebase } from '../context/FirebaseContext';
 import {
@@ -31,6 +38,8 @@ import {
   CloudDone,
   Image
 } from '../components/AppIcons';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
 
 const isoDate = (date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -52,6 +61,14 @@ const toComparableText = (value) => {
 const matchesFilter = (value, filterValue) => {
   if (!filterValue || filterValue === 'Todos') return true;
   return toComparableText(value).includes(toComparableText(filterValue));
+};
+
+const extractTextValue = (source) => {
+  if (!source) return '';
+  if (typeof source === 'string') return source.trim();
+  if (typeof source?.alias === 'string' && source.alias.trim()) return source.alias.trim();
+  if (typeof source?.name === 'string' && source.name.trim()) return source.name.trim();
+  return '';
 };
 
 const normalizeGuide = (guide, fallback = {}) => {
@@ -78,10 +95,20 @@ const normalizeGuide = (guide, fallback = {}) => {
     fallback.subDestino ??
     '';
 
+  const derivedUbicacion =
+    extractTextValue(guide?.ubicacion) ||
+    extractTextValue(guide?.location) ||
+    extractTextValue(fallback.ubicacion);
+
+  const derivedDestino =
+    extractTextValue(guide?.destino) ||
+    extractTextValue(guide?.destination) ||
+    extractTextValue(fallback.destino);
+
   return {
     guideNumber,
-    ubicacion: guide?.ubicacion ?? guide?.location ?? fallback.ubicacion ?? 'No definido',
-    destino: guide?.destino ?? guide?.destination ?? fallback.destino ?? 'No definido',
+    ubicacion: derivedUbicacion || 'No definido',
+    destino: derivedDestino || 'No definido',
     subDestino,
     date: guide?.date ?? guide?.fecha ?? guide?.createdAt ?? null,
     rawRecord: guide
@@ -113,6 +140,13 @@ const getLocationLabel = (guide) => {
   return 'No registrada';
 };
 
+const parseDateValue = (value) => {
+  if (!value) return null;
+  if (typeof value?.toDate === 'function') return value.toDate();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 const formatDate = (value) => {
   if (!value) return 'Fecha no disponible';
   const parsed = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
@@ -121,7 +155,15 @@ const formatDate = (value) => {
 };
 
 const DashboardPage = () => {
-  const { getGuideRecords, currentUser, getDestinationsCatalog, getLocationsCatalog } = useFirebase();
+  const {
+    getGuideRecords,
+    currentUser,
+    currentUserProfile,
+    getDestinationsCatalog,
+    getLocationsCatalog,
+    updateGuideRecord,
+    isAdmin
+  } = useFirebase();
   const [filters, setFilters] = useState({
     startDate: isoDate(today),
     endDate: isoDate(today),
@@ -145,6 +187,16 @@ const DashboardPage = () => {
   const [catalogError, setCatalogError] = useState('');
   const [catalogLoading, setCatalogLoading] = useState({ destinations: false, locations: false });
   const filtersRef = useRef(filters);
+  const [refreshStatus, setRefreshStatus] = useState({ status: 'idle', message: '' });
+  const [editBuffer, setEditBuffer] = useState({});
+  const [guideUpdateState, setGuideUpdateState] = useState({});
+  const [quickFilters, setQuickFilters] = useState({
+    startDate: isoDate(today),
+    endDate: isoDate(today),
+    guideNumber: ''
+  });
+  const [quickGuides, setQuickGuides] = useState([]);
+  const [quickStatus, setQuickStatus] = useState({ state: 'idle', message: '' });
 
   const transporteApiBaseUrl = useMemo(() => {
     const envBase = (import.meta.env.VITE_TRANSPORTE_API || '').trim();
@@ -156,9 +208,145 @@ const DashboardPage = () => {
     setFilters((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleQuickFilterChange = (field, value) => {
+    setQuickFilters((prev) => ({ ...prev, [field]: value }));
+  };
+
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
+
+  const toDateTimeLocalValue = useCallback((value) => {
+    const date = parseDateValue(value);
+    if (!date) return '';
+    const pad = (num) => String(num).padStart(2, '0');
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }, []);
+
+  const destinationChoices = useMemo(() => (
+    destinationsCatalog
+      .map((destination) => destination.name)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+  ), [destinationsCatalog]);
+
+  const getSubDestinoOptions = useCallback((destName) => {
+    if (!destName) return [];
+    const entry = destinationsCatalog.find((dest) => dest.name === destName);
+    return Array.isArray(entry?.subDestinations) ? entry.subDestinations : [];
+  }, [destinationsCatalog]);
+
+  const getGuideId = (guide) => guide?.rawRecord?.id || guide?.id || null;
+
+  const getEditValue = (guide, field) => {
+    const id = getGuideId(guide);
+    const buffer = id ? editBuffer[id] : null;
+    if (buffer && Object.prototype.hasOwnProperty.call(buffer, field)) {
+      return buffer[field];
+    }
+    if (field === 'date') {
+      return toDateTimeLocalValue(guide.date);
+    }
+    if (field === 'destino') {
+      return guide.destino || '';
+    }
+    if (field === 'subDestino') {
+      return guide.subDestino || '';
+    }
+    return '';
+  };
+
+  const handleEditFieldChange = (guide, field, value) => {
+    const id = getGuideId(guide);
+    if (!id) return;
+    setEditBuffer((prev) => {
+      const nextEntry = { ...(prev[id] || {}), [field]: value };
+      if (field === 'destino') {
+        nextEntry.subDestino = '';
+      }
+      nextEntry.dirty = true;
+      return { ...prev, [id]: nextEntry };
+    });
+  };
+
+  const guideHasChanges = (guide) => {
+    const id = getGuideId(guide);
+    if (!id) return false;
+    const buffer = editBuffer[id];
+    if (!buffer?.dirty) return false;
+    const baseDate = toDateTimeLocalValue(guide.date);
+    const dateChanged = typeof buffer.date !== 'undefined' && buffer.date !== baseDate;
+    const destinoChanged = typeof buffer.destino !== 'undefined' && buffer.destino !== (guide.destino || '');
+    const subChanged = typeof buffer.subDestino !== 'undefined' && buffer.subDestino !== (guide.subDestino || '');
+    return dateChanged || destinoChanged || subChanged;
+  };
+
+  const handleSaveGuide = async (guide) => {
+    const id = getGuideId(guide);
+    if (!id) return;
+    const buffer = editBuffer[id] || {};
+    const baseDate = toDateTimeLocalValue(guide.date);
+    const payload = {};
+
+    if (typeof buffer.date !== 'undefined' && buffer.date !== baseDate) {
+      const parsed = new Date(buffer.date);
+      if (!Number.isNaN(parsed.getTime())) {
+        payload.date = parsed.toISOString();
+      }
+    }
+    if (typeof buffer.destino !== 'undefined' && buffer.destino !== (guide.destino || '')) {
+      payload.destination = buffer.destino || '';
+    }
+    if (typeof buffer.subDestino !== 'undefined' && buffer.subDestino !== (guide.subDestino || '')) {
+      payload.subDestination = buffer.subDestino || '';
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setGuideUpdateState((prev) => ({
+        ...prev,
+        [id]: { status: 'idle', message: 'Sin cambios' }
+      }));
+      return;
+    }
+
+    setGuideUpdateState((prev) => ({
+      ...prev,
+      [id]: { status: 'loading', message: '' }
+    }));
+
+    try {
+      await updateGuideRecord(id, payload);
+      await handleCompare(filtersRef.current);
+      setGuideUpdateState((prev) => ({
+        ...prev,
+        [id]: { status: 'success', message: 'Actualizado' }
+      }));
+      setEditBuffer((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), dirty: false }
+      }));
+      setTimeout(() => {
+        setGuideUpdateState((prev) => {
+          const clone = { ...prev };
+          if (clone[id]?.status === 'success') {
+            clone[id] = { status: 'idle', message: '' };
+          }
+          return clone;
+        });
+      }, 2000);
+    } catch (error) {
+      console.error('No se pudo actualizar la guía:', error);
+      setGuideUpdateState((prev) => ({
+        ...prev,
+        [id]: { status: 'error', message: error.message || 'Error al actualizar' }
+      }));
+    }
+  };
 
   const parseDateValue = (value) => {
     if (!value) return null;
@@ -279,6 +467,69 @@ const DashboardPage = () => {
       setIsComparing(false);
     }
   }, [fetchDestinoGuides, fetchUbicacionGuides, compareGuides]);
+
+  const handleManualRefresh = useCallback(async () => {
+    setRefreshStatus({ status: 'loading', message: 'Actualizando filtros...' });
+    try {
+      await handleCompare(filters);
+      setRefreshStatus({ status: 'success', message: 'Actualizado correctamente' });
+      setTimeout(() => {
+        setRefreshStatus((prev) => (prev.status === 'success' ? { status: 'idle', message: '' } : prev));
+      }, 2500);
+    } catch (err) {
+      setRefreshStatus({ status: 'error', message: err.message || 'No se pudo actualizar.' });
+    }
+  }, [handleCompare, filters]);
+
+  const handleQuickFetch = useCallback(async () => {
+    setQuickStatus({ state: 'loading', message: 'Buscando guías…' });
+    try {
+      const records = await getGuideRecords();
+      const normalized = records.map((record) => normalizeGuide(record, {
+        ubicacion: record?.location?.alias || record?.location?.name,
+        destino: record?.destination || record?.destino
+      }));
+
+      const { startDate, endDate, guideNumber } = quickFilters;
+      const trimmedGuide = guideNumber.trim().toLowerCase();
+      const startBoundary = startDate ? new Date(`${startDate}T00:00:00`) : null;
+      const endBoundary = endDate ? new Date(`${endDate}T23:59:59`) : null;
+
+      const filtered = normalized.filter((guide) => {
+        const guideValue = (guide.guideNumber || '').toLowerCase();
+        if (trimmedGuide && !guideValue.includes(trimmedGuide)) {
+          return false;
+        }
+
+        const guideDate = parseDateValue(guide.date);
+        if (startBoundary && (!guideDate || guideDate < startBoundary)) {
+          return false;
+        }
+        if (endBoundary && (!guideDate || guideDate > endBoundary)) {
+          return false;
+        }
+        return true;
+      });
+
+      const sorted = filtered.sort((a, b) => {
+        const aDate = parseDateValue(a.date)?.getTime() || 0;
+        const bDate = parseDateValue(b.date)?.getTime() || 0;
+        return bDate - aDate;
+      });
+
+      setQuickGuides(sorted);
+
+      setQuickStatus({
+        state: 'success',
+        message: sorted.length
+          ? `${sorted.length} guía(s) encontradas.`
+          : 'No se encontraron guías con esos filtros.'
+      });
+    } catch (error) {
+      console.error('Error al cargar guías rápidas:', error);
+      setQuickStatus({ state: 'error', message: error.message || 'No se pudo obtener la información.' });
+    }
+  }, [getGuideRecords, quickFilters]);
 
   const loadDestinationsCatalog = useCallback(async () => {
     setCatalogLoading((prev) => ({ ...prev, destinations: true }));
@@ -478,9 +729,50 @@ const DashboardPage = () => {
       )}
 
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Filtros
-        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            gap: 1,
+            justifyContent: 'space-between',
+            mb: 2
+          }}
+        >
+          <Typography variant="h6">Filtros</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, width: '100%', maxWidth: { xs: '100%', sm: 220 } }}>
+            <Button
+              variant="contained"
+              color={refreshStatus.status === 'error' ? 'error' : 'primary'}
+              startIcon={
+                refreshStatus.status === 'loading' ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <RefreshIcon />
+                )
+              }
+              onClick={handleManualRefresh}
+              disabled={refreshStatus.status === 'loading' || isComparing}
+              fullWidth
+            >
+              {refreshStatus.status === 'loading' ? 'Actualizando…' : 'Actualizar'}
+            </Button>
+            {refreshStatus.status !== 'idle' && (
+              <Typography
+                variant="caption"
+                sx={{ mt: 0.5 }}
+                color=
+                  {refreshStatus.status === 'success'
+                    ? 'success.main'
+                    : refreshStatus.status === 'error'
+                      ? 'error.main'
+                      : 'text.secondary'}
+              >
+                {refreshStatus.message}
+              </Typography>
+            )}
+          </Box>
+        </Box>
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6}>
             <TextField
@@ -578,14 +870,14 @@ const DashboardPage = () => {
           }}
         >
           <Typography variant="subtitle2" color="text.secondary">
-            Guías desde Origen
+            Guías desde transporte
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <LocationOn />
             <Typography variant="h3">{totalUbicacion}</Typography>
           </Box>
           <Typography variant="body2" color="text.secondary">
-            Registros provenientes del sistema de transporte (SQL).
+            Registros provenientes del sistema de transporte.
           </Typography>
         </Paper>
 
@@ -601,14 +893,14 @@ const DashboardPage = () => {
           }}
         >
           <Typography variant="subtitle2" color="text.secondary">
-            Guías en Destino
+            Guías registradas
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CloudSync />
             <Typography variant="h3">{totalDestino}</Typography>
           </Box>
           <Typography variant="body2" color="text.secondary">
-            Datos recibidos desde la app en terreno (Firestore).
+            Datos recibidos desde la app en terreno.
           </Typography>
         </Paper>
 
@@ -683,7 +975,7 @@ const DashboardPage = () => {
             </Box>
             {ubicacionGuides.length === 0 ? (
               <Alert severity="info">
-                Aún no hay guías desde la base SQL para este filtro.
+                Aún no hay guías del sistema de transporte para este filtro.
               </Alert>
             ) : (
               <List dense sx={{ maxHeight: 400, overflow: 'auto' }}>
@@ -733,7 +1025,7 @@ const DashboardPage = () => {
         <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
           <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="h6">Firestore - Guías en destino</Typography>
+              <Typography variant="h6">Registros cargados</Typography>
               <Chip label={`${destinoGuides.length} guías`} color="primary" icon={<CloudDone />} />
             </Box>
             {destinoGuides.length === 0 ? (
@@ -822,6 +1114,196 @@ const DashboardPage = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      {isAdmin && (
+        <Box sx={{ mt: 5 }}>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>
+              Edición rápida de guías
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Usa estos filtros independientes para ajustar manualmente las guías capturadas desde la app.
+            </Typography>
+          </Box>
+          <Grid container spacing={2} alignItems="flex-end" sx={{ mb: 2 }}>
+            <Grid item xs={12} md={4}>
+              <TextField
+                label="Desde"
+                type="date"
+                fullWidth
+                value={quickFilters.startDate}
+                onChange={(e) => handleQuickFilterChange('startDate', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                label="Hasta"
+                type="date"
+                fullWidth
+                value={quickFilters.endDate}
+                onChange={(e) => handleQuickFilterChange('endDate', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                label="Número de guía (opcional)"
+                fullWidth
+                value={quickFilters.guideNumber}
+                onChange={(e) => handleQuickFilterChange('guideNumber', e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  )
+                }}
+                placeholder="Ej: 12345"
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Button
+                variant="contained"
+                fullWidth
+                onClick={handleQuickFetch}
+                disabled={quickStatus.state === 'loading'}
+              >
+                {quickStatus.state === 'loading' ? 'Buscando…' : 'Buscar guías'}
+              </Button>
+              <Typography
+                variant="caption"
+                color={quickStatus.state === 'error' ? 'error.main' : quickStatus.state === 'success' ? 'success.main' : 'text.secondary'}
+                sx={{ display: 'block', mt: 0.5 }}
+              >
+                {quickStatus.state === 'idle'
+                  ? 'Los datos se mostrarán después de presionar "Buscar".'
+                  : quickStatus.message}
+              </Typography>
+            </Grid>
+          </Grid>
+          <TableContainer component={Paper} sx={{ mt: 2, maxHeight: 420 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell>N° Guía</TableCell>
+                  <TableCell>Fecha captura</TableCell>
+                  <TableCell>Destino</TableCell>
+                  <TableCell>Subdestino</TableCell>
+                  <TableCell align="right">Acciones</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {quickGuides.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center">
+                      {quickStatus.state === 'idle'
+                        ? 'Usa los filtros y presiona "Buscar guías".'
+                        : quickStatus.message || 'No se encontraron guías con esos filtros.'}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {quickGuides.map((guide) => {
+                  const guideId = getGuideId(guide);
+                  const currentDateValue = getEditValue(guide, 'date');
+                  const currentDestinoValue = getEditValue(guide, 'destino');
+                  const currentSubDestinoValue = getEditValue(guide, 'subDestino');
+                  const subOptions = getSubDestinoOptions(currentDestinoValue);
+                  const status = guideUpdateState[guideId]?.status || 'idle';
+                  const helperMessage = guideUpdateState[guideId]?.message || '';
+                  const hasChanges = guideHasChanges(guide);
+                  return (
+                    <TableRow key={`${guideId}-${guide.guideNumber}`} hover>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                          <Typography variant="subtitle2">N° {guide.guideNumber}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Origen: {guide.ubicacion || 'No definido'}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          type="datetime-local"
+                          size="small"
+                          fullWidth
+                          value={currentDateValue}
+                          onChange={(e) => handleEditFieldChange(guide, 'date', e.target.value)}
+                          InputLabelProps={{ shrink: true }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          select
+                          size="small"
+                          fullWidth
+                          value={currentDestinoValue}
+                          onChange={(e) => handleEditFieldChange(guide, 'destino', e.target.value)}
+                        >
+                          <MenuItem value="">
+                            Sin destino
+                          </MenuItem>
+                          {destinationChoices.map((option) => (
+                            <MenuItem key={option} value={option}>
+                              {option}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </TableCell>
+                      <TableCell>
+                        {subOptions.length > 0 ? (
+                          <TextField
+                            select
+                            size="small"
+                            fullWidth
+                            value={currentSubDestinoValue}
+                            onChange={(e) => handleEditFieldChange(guide, 'subDestino', e.target.value)}
+                          >
+                            <MenuItem value="">Sin subdestino</MenuItem>
+                            {subOptions.map((sub) => (
+                              <MenuItem key={sub} value={sub}>
+                                {sub}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        ) : (
+                          <TextField
+                            size="small"
+                            fullWidth
+                            placeholder="Subdestino"
+                            value={currentSubDestinoValue}
+                            onChange={(e) => handleEditFieldChange(guide, 'subDestino', e.target.value)}
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell align="right" sx={{ minWidth: 140 }}>
+                        <Stack spacing={0.5} alignItems="flex-end">
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() => handleSaveGuide(guide)}
+                            disabled={!hasChanges || status === 'loading'}
+                          >
+                            {status === 'loading' ? 'Guardando…' : 'Guardar'}
+                          </Button>
+                          {helperMessage && (
+                            <Typography
+                              variant="caption"
+                              color={status === 'error' ? 'error.main' : status === 'success' ? 'success.main' : 'text.secondary'}
+                            >
+                              {helperMessage}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
 
       <Dialog
         open={showDifferencesModal}
