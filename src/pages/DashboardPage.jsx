@@ -149,9 +149,34 @@ const parseDateValue = (value) => {
 
 const formatDate = (value) => {
   if (!value) return 'Fecha no disponible';
-  const parsed = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Fecha no disponible';
-  return parsed.toLocaleString('es-CL');
+
+  const tryParseLocalDateString = (raw) => {
+    if (typeof raw !== 'string') return null;
+    // Evita tratar cadenas ISO con zona horaria explícita
+    if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) return null;
+
+    const normalized = raw.trim().replace('T', ' ');
+    const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (!match) return null;
+
+    const [, year, month, day, hour = '00', minute = '00', second = '00'] = match;
+    const localDate = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    );
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
+  };
+
+  const candidate = typeof value?.toDate === 'function'
+    ? value.toDate()
+    : tryParseLocalDateString(value) || new Date(value);
+
+  if (Number.isNaN(candidate?.getTime?.())) return 'Fecha no disponible';
+  return candidate.toLocaleString('es-CL');
 };
 
 const DashboardPage = () => {
@@ -970,7 +995,7 @@ const DashboardPage = () => {
         <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
           <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="h6">SQL - Guías por Origen</Typography>
+              <Typography variant="h6">Guías por origen</Typography>
               <Chip label={`${ubicacionGuides.length} guías`} color="default" />
             </Box>
             {ubicacionGuides.length === 0 ? (
@@ -1003,7 +1028,7 @@ const DashboardPage = () => {
                         secondary={
                           <>
                             <Typography component="span" variant="body2" color="text.secondary">
-                              {formatDate(guide.date)}
+                              {formatDate(guide.date).split(' ')[0]}
                             </Typography>
                             <Typography component="span" variant="body2" display="block">
                               Origen: {guide.ubicacion || 'No definido'}
