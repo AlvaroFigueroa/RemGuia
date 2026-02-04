@@ -519,6 +519,7 @@ const DashboardPage = () => {
       const trimmedGuide = guideNumber.trim().toLowerCase();
       const startBoundary = startDate ? new Date(`${startDate}T00:00:00`) : null;
       const endBoundary = endDate ? new Date(`${endDate}T23:59:59`) : null;
+      const applyDateFilters = !trimmedGuide;
 
       const filtered = normalized.filter((guide) => {
         const guideValue = (guide.guideNumber || '').toLowerCase();
@@ -526,13 +527,16 @@ const DashboardPage = () => {
           return false;
         }
 
-        const guideDate = parseDateValue(guide.date);
-        if (startBoundary && (!guideDate || guideDate < startBoundary)) {
-          return false;
+        if (applyDateFilters) {
+          const guideDate = parseDateValue(guide.date);
+          if (startBoundary && (!guideDate || guideDate < startBoundary)) {
+            return false;
+          }
+          if (endBoundary && (!guideDate || guideDate > endBoundary)) {
+            return false;
+          }
         }
-        if (endBoundary && (!guideDate || guideDate > endBoundary)) {
-          return false;
-        }
+
         return true;
       });
 
