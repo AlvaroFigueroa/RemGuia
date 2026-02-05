@@ -1261,7 +1261,7 @@ const DashboardPage = () => {
         </Alert>
       )}
 
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
         <Box
           sx={{
             display: 'flex',
@@ -1524,9 +1524,10 @@ const DashboardPage = () => {
         </Paper>
       </Stack>
 
-      <Grid container spacing={3} alignItems="stretch" justifyContent="center">
-        <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
-          <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
+      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+        <Grid container spacing={3} alignItems="stretch" justifyContent="center">
+          <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="h6">Guías por origen</Typography>
               <Chip label={`${ubicacionGuides.length} guías`} color="default" />
@@ -1578,10 +1579,10 @@ const DashboardPage = () => {
                 ))}
               </List>
             )}
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
-          <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Paper elevation={3} sx={{ p: 2, width: '100%', maxWidth: 520 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="h6">Registros cargados</Typography>
               <Chip label={`${destinoGuides.length} guías`} color="primary" icon={<CloudDone />} />
@@ -1669,12 +1670,13 @@ const DashboardPage = () => {
                 })}
               </List>
             )}
-          </Paper>
+            </Paper>
+          </Grid>
         </Grid>
-      </Grid>
+      </Paper>
 
       {isAdmin && (
-        <Box sx={{ mt: 5 }}>
+        <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>
               Edición rápida de guías
@@ -1860,10 +1862,10 @@ const DashboardPage = () => {
               </TableBody>
             </Table>
           </TableContainer>
-        </Box>
+        </Paper>
       )}
 
-      <Box sx={{ mt: 6 }} ref={intervalReportRef}>
+      <Paper elevation={3} sx={{ p: 3, mt: 4 }} ref={intervalReportRef}>
         <Typography variant="h5" gutterBottom>
           Intervalos entre recepciones por conductor
         </Typography>
@@ -2026,7 +2028,7 @@ const DashboardPage = () => {
             </Typography>
           </Paper>
         )}
-      </Box>
+      </Paper>
 
       <Dialog
         open={showDifferencesModal}
