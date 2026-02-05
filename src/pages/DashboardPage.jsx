@@ -40,6 +40,9 @@ import {
 } from '../components/AppIcons';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 const isoDate = (date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -69,6 +72,33 @@ const extractTextValue = (source) => {
   if (typeof source?.alias === 'string' && source.alias.trim()) return source.alias.trim();
   if (typeof source?.name === 'string' && source.name.trim()) return source.name.trim();
   return '';
+};
+
+const getConductorName = (guide) => {
+  const record = guide?.rawRecord || guide;
+  const candidate =
+    record?.conductor ??
+    record?.Conductor ??
+    record?.chofer ??
+    record?.Chofer ??
+    record?.driver ??
+    record?.Driver ??
+    record?.nombreConductor ??
+    record?.NombreConductor ??
+    record?.operador ??
+    record?.Operador ??
+    '';
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : 'No registrado';
+};
+
+const escapeHtml = (value) => {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 };
 
 const normalizeGuide = (guide, fallback = {}) => {
@@ -113,6 +143,14 @@ const normalizeGuide = (guide, fallback = {}) => {
     date: guide?.date ?? guide?.fecha ?? guide?.createdAt ?? null,
     rawRecord: guide
   };
+};
+
+const normalizeGuideNumberKey = (value) => {
+  if (!value) return '';
+  const base = String(value).trim().toLowerCase();
+  if (!base) return '';
+  // remove spaces and separators, drop leading zeros for consistent match
+  return base.replace(/[^0-9a-z]/g, '').replace(/^0+/, '') || base.replace(/\s+/g, '');
 };
 
 const buildGuideKey = (guide) => {
@@ -179,6 +217,30 @@ const formatDate = (value) => {
   return candidate.toLocaleString('es-CL');
 };
 
+const formatReportDate = (value, { dateOnly = false } = {}) => {
+  const formatted = formatDate(value);
+  if (!dateOnly) return formatted;
+  const [datePart] = formatted.split(',');
+  return (datePart || formatted).trim();
+};
+
+const formatIntervalValue = (minutes) => {
+  if (minutes == null || !Number.isFinite(minutes)) return '—';
+  if (minutes < 1) {
+    const seconds = Math.round(minutes * 60);
+    return `${seconds} s`;
+  }
+  if (minutes < 60) {
+    return `${minutes.toFixed(1)} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = Math.round(minutes % 60);
+  if (restMinutes === 0) {
+    return `${hours} h`;
+  }
+  return `${hours} h ${restMinutes} min`;
+};
+
 const DashboardPage = () => {
   const {
     getGuideRecords,
@@ -220,8 +282,23 @@ const DashboardPage = () => {
     endDate: isoDate(today),
     guideNumber: ''
   });
+  const [intervalFilters, setIntervalFilters] = useState({
+    startDate: isoDate(today),
+    endDate: isoDate(today)
+  });
+  const [intervalFiltersDraft, setIntervalFiltersDraft] = useState({
+    startDate: isoDate(today),
+    endDate: isoDate(today)
+  });
+  const [intervalPdfStatus, setIntervalPdfStatus] = useState({ state: 'idle', message: '' });
   const [quickGuides, setQuickGuides] = useState([]);
   const [quickStatus, setQuickStatus] = useState({ state: 'idle', message: '' });
+  const [reportStatus, setReportStatus] = useState({ state: 'idle', message: '' });
+  const [intervalDestinoData, setIntervalDestinoData] = useState([]);
+  const [intervalUbicacionData, setIntervalUbicacionData] = useState([]);
+  const [intervalStatus, setIntervalStatus] = useState({ state: 'idle', message: '' });
+  const intervalDataInitializedRef = useRef(false);
+  const intervalReportRef = useRef(null);
 
   const transporteApiBaseUrl = useMemo(() => {
     const envBase = (import.meta.env.VITE_TRANSPORTE_API || '').trim();
@@ -237,9 +314,24 @@ const DashboardPage = () => {
     setQuickFilters((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleIntervalFilterChange = (field, value) => {
+    setIntervalFiltersDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
+
+  useEffect(() => {
+    setIntervalFiltersDraft(intervalFilters);
+  }, [intervalFilters]);
+
+  useEffect(() => {
+    if (!destinoGuides.length && !ubicacionGuides.length) return;
+    if (intervalDataInitializedRef.current) return;
+    setIntervalDestinoData(destinoGuides);
+    setIntervalUbicacionData(ubicacionGuides);
+  }, [destinoGuides, ubicacionGuides]);
 
   const toDateTimeLocalValue = useCallback((value) => {
     const date = parseDateValue(value);
@@ -393,6 +485,134 @@ const DashboardPage = () => {
     });
   }, []);
 
+  const intervalDestinoGuides = useMemo(
+    () => filterByRange(intervalDestinoData, intervalFilters),
+    [intervalDestinoData, intervalFilters, filterByRange]
+  );
+  const intervalUbicacionGuides = useMemo(
+    () => filterByRange(intervalUbicacionData, intervalFilters),
+    [intervalUbicacionData, intervalFilters, filterByRange]
+  );
+
+  const conductorCatalog = useMemo(() => {
+    const catalog = new Map();
+    intervalUbicacionGuides.forEach((guide) => {
+      const key = normalizeGuideNumberKey(guide.guideNumber);
+      if (!key) return;
+      const conductorName = getConductorName(guide);
+      if (!catalog.has(key)) {
+        catalog.set(key, conductorName || 'No registrado');
+      }
+    });
+    return catalog;
+  }, [intervalUbicacionGuides]);
+
+  const conductorIntervals = useMemo(() => {
+    if (!intervalDestinoGuides.length) return [];
+
+    const byConductor = new Map();
+
+    intervalDestinoGuides.forEach((guide) => {
+      const key = normalizeGuideNumberKey(guide.guideNumber);
+      const conductor = key ? conductorCatalog.get(key) || 'No registrado' : 'No registrado';
+      if (!byConductor.has(conductor)) {
+        byConductor.set(conductor, []);
+      }
+      byConductor.get(conductor).push(guide);
+    });
+
+    const toDateValue = (guide) => parseDateValue(guide?.date) || new Date(0);
+
+    return Array.from(byConductor.entries())
+      .map(([conductor, guides]) => {
+        const sortedGuides = guides
+          .map((guide) => ({
+            ...guide,
+            parsedDate: toDateValue(guide)
+          }))
+          .filter((guide) => guide.parsedDate instanceof Date && !Number.isNaN(guide.parsedDate.getTime()))
+          .sort((a, b) => a.parsedDate - b.parsedDate);
+
+        const intervals = [];
+        for (let i = 1; i < sortedGuides.length; i += 1) {
+          const previous = sortedGuides[i - 1];
+          const current = sortedGuides[i];
+          const diffMs = current.parsedDate - previous.parsedDate;
+          const diffMinutes = diffMs / 60000;
+          if (Number.isFinite(diffMinutes) && diffMinutes >= 0) {
+            intervals.push({
+              minutes: diffMinutes,
+              fromGuide: previous.guideNumber || 'Sin número',
+              toGuide: current.guideNumber || 'Sin número',
+              toDate: current.parsedDate
+            });
+          }
+        }
+
+        return {
+          conductor,
+          receptions: sortedGuides.length,
+          intervals
+        };
+      })
+      .filter((entry) => entry.receptions > 0)
+      .sort((a, b) => b.receptions - a.receptions || a.conductor.localeCompare(b.conductor, 'es'));
+  }, [conductorCatalog, intervalDestinoGuides]);
+
+  const maxIntervalColumns = useMemo(() => {
+    return conductorIntervals.reduce((max, entry) => Math.max(max, entry.intervals.length), 0);
+  }, [conductorIntervals]);
+
+  const handleExportIntervalPdf = useCallback(async () => {
+    if (!intervalReportRef.current) {
+      setIntervalPdfStatus({ state: 'error', message: 'No hay contenido para exportar.' });
+      return;
+    }
+    if (!conductorIntervals.length) {
+      setIntervalPdfStatus({ state: 'error', message: 'No existen intervalos en este rango.' });
+      return;
+    }
+
+    setIntervalPdfStatus({ state: 'loading', message: 'Generando PDF…' });
+
+    try {
+      const canvas = await html2canvas(intervalReportRef.current, {
+        scale: 1.3,
+        useCORS: true,
+        backgroundColor: '#ffffff'
+      });
+
+      const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
+      const margin = 24;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const printableWidth = pageWidth - margin * 2;
+      const pageContentHeight = pageHeight - margin * 2;
+      const imgHeight = (canvas.height * printableWidth) / canvas.width;
+      const imgData = canvas.toDataURL('image/png');
+
+      let heightLeft = imgHeight;
+      let position = margin;
+
+      pdf.addImage(imgData, 'PNG', margin, position, printableWidth, imgHeight);
+      heightLeft -= pageContentHeight;
+
+      while (heightLeft > 0) {
+        pdf.addPage();
+        position = margin - (imgHeight - heightLeft);
+        pdf.addImage(imgData, 'PNG', margin, position, printableWidth, imgHeight);
+        heightLeft -= pageContentHeight;
+      }
+
+      const fileName = `intervalos-conductores-${intervalFilters.startDate || 'inicio'}-${intervalFilters.endDate || 'fin'}.pdf`;
+      pdf.save(fileName);
+      setIntervalPdfStatus({ state: 'success', message: 'PDF descargado correctamente.' });
+    } catch (error) {
+      console.error('Error al generar PDF de intervalos:', error);
+      setIntervalPdfStatus({ state: 'error', message: error.message || 'No se pudo generar el PDF.' });
+    }
+  }, [conductorIntervals.length, intervalFilters]);
+
   const fetchDestinoGuides = useCallback(async (range) => {
     if (!currentUser) {
       throw new Error('Debes iniciar sesión para ver el panel.');
@@ -443,7 +663,25 @@ const DashboardPage = () => {
     });
   }, [transporteApiBaseUrl]);
 
-  const compareGuides = useCallback((ubicacion, destino) => {
+  const handleApplyIntervalFilters = useCallback(async () => {
+    setIntervalStatus({ state: 'loading', message: 'Actualizando intervalos…' });
+    try {
+      const [destinoData, ubicacionData] = await Promise.all([
+        fetchDestinoGuides(intervalFiltersDraft),
+        fetchUbicacionGuides(intervalFiltersDraft)
+      ]);
+      setIntervalDestinoData(destinoData);
+      setIntervalUbicacionData(ubicacionData);
+      setIntervalFilters(intervalFiltersDraft);
+      setIntervalStatus({ state: 'success', message: 'Intervalos actualizados correctamente.' });
+      intervalDataInitializedRef.current = true;
+    } catch (error) {
+      console.error('No se pudieron actualizar los intervalos:', error);
+      setIntervalStatus({ state: 'error', message: error.message || 'No se pudo obtener la información.' });
+    }
+  }, [intervalFiltersDraft, fetchDestinoGuides, fetchUbicacionGuides]);
+
+  const compareGuides = useCallback((ubicacion = [], destino = []) => {
     const destinoKeyMap = new Map(destino.map((guide) => [buildGuideKey(guide), guide]));
     const ubicacionKeyMap = new Map(ubicacion.map((guide) => [buildGuideKey(guide), guide]));
 
@@ -451,114 +689,359 @@ const DashboardPage = () => {
     const missingInUbicacion = destino.filter((guide) => !ubicacionKeyMap.has(buildGuideKey(guide)));
     const matches = [];
 
-    destinoKeyMap.forEach((guide, key) => {
-      if (!guide?.guideNumber) return;
-      const sqlGuide = ubicacionKeyMap.get(key);
-      if (sqlGuide) {
-        matches.push({
-          key,
-          guideNumber: guide.guideNumber,
-          subDestino: guide.subDestino || sqlGuide.subDestino || '',
-          firestore: guide,
-          sql: sqlGuide
-        });
-      }
+    destinoKeyMap.forEach((destinoGuide, key) => {
+      const ubicacionGuide = ubicacionKeyMap.get(key);
+      if (!ubicacionGuide) return;
+      matches.push({
+        key,
+        guideNumber: destinoGuide.guideNumber || ubicacionGuide.guideNumber || 'Sin número',
+        firestore: destinoGuide,
+        sql: ubicacionGuide,
+        destino: destinoGuide.destino || destinoGuide.destination || ubicacionGuide.destino || 'No definido',
+        subDestino: destinoGuide.subDestino || ubicacionGuide.subDestino || 'No definido'
+      });
     });
 
-    return {
-      missingInDestino,
-      missingInUbicacion,
-      matches
-    };
+    return { missingInDestino, missingInUbicacion, matches };
   }, []);
 
-  const handleCompare = useCallback(async (range) => {
-    const activeFilters = range || filtersRef.current;
-    setIsComparing(true);
-    setError('');
-    try {
-      const [destinoData, ubicacionData] = await Promise.all([
-        fetchDestinoGuides(activeFilters),
-        fetchUbicacionGuides(activeFilters)
-      ]);
-
-      setDestinoGuides(destinoData);
-      setUbicacionGuides(ubicacionData);
-      setDifferences(compareGuides(ubicacionData, destinoData));
-    } catch (err) {
-      console.error('Error al comparar guías:', err);
-      setError(err.message || 'No se pudo comparar la información.');
-    } finally {
-      setIsComparing(false);
-    }
-  }, [fetchDestinoGuides, fetchUbicacionGuides, compareGuides]);
+  const handleCompare = useCallback(
+    async (overrideFilters) => {
+      const activeFilters = overrideFilters || filtersRef.current;
+      setIsComparing(true);
+      setError('');
+      try {
+        const [ubicacionData, destinoData] = await Promise.all([
+          fetchUbicacionGuides(activeFilters),
+          fetchDestinoGuides(activeFilters)
+        ]);
+        setUbicacionGuides(ubicacionData);
+        setDestinoGuides(destinoData);
+        setDifferences(compareGuides(ubicacionData, destinoData));
+        return true;
+      } catch (error) {
+        console.error('No se pudo obtener la información principal:', error);
+        setError(error.message || 'No se pudo obtener la información.');
+        return false;
+      } finally {
+        setIsComparing(false);
+      }
+    },
+    [compareGuides, fetchDestinoGuides, fetchUbicacionGuides, filtersRef]
+  );
 
   const handleManualRefresh = useCallback(async () => {
-    setRefreshStatus({ status: 'loading', message: 'Actualizando filtros...' });
-    try {
-      await handleCompare(filters);
-      setRefreshStatus({ status: 'success', message: 'Actualizado correctamente' });
-      setTimeout(() => {
-        setRefreshStatus((prev) => (prev.status === 'success' ? { status: 'idle', message: '' } : prev));
-      }, 2500);
-    } catch (err) {
-      setRefreshStatus({ status: 'error', message: err.message || 'No se pudo actualizar.' });
+    setRefreshStatus({ status: 'loading', message: 'Actualizando datos…' });
+    const success = await handleCompare(filtersRef.current);
+    setRefreshStatus({
+      status: success ? 'success' : 'error',
+      message: success ? 'Datos sincronizados correctamente.' : 'No se pudieron actualizar los datos.'
+    });
+    if (success) {
+      setTimeout(() => setRefreshStatus({ status: 'idle', message: '' }), 2500);
     }
-  }, [handleCompare, filters]);
+  }, [handleCompare]);
 
   const handleQuickFetch = useCallback(async () => {
-    setQuickStatus({ state: 'loading', message: 'Buscando guías…' });
+    setQuickStatus({ state: 'loading', message: '' });
     try {
-      const records = await getGuideRecords();
-      const normalized = records.map((record) => normalizeGuide(record, {
-        ubicacion: record?.location?.alias || record?.location?.name,
-        destino: record?.destination || record?.destino
-      }));
+      const range = {
+        startDate: quickFilters.startDate,
+        endDate: quickFilters.endDate,
+        ubicacion: 'Todos',
+        destino: 'Todos',
+        subDestino: 'Todos'
+      };
 
-      const { startDate, endDate, guideNumber } = quickFilters;
-      const trimmedGuide = guideNumber.trim().toLowerCase();
-      const startBoundary = startDate ? new Date(`${startDate}T00:00:00`) : null;
-      const endBoundary = endDate ? new Date(`${endDate}T23:59:59`) : null;
-      const applyDateFilters = !trimmedGuide;
+      const data = await fetchDestinoGuides(range);
+      const trimmed = quickFilters.guideNumber.trim().toLowerCase();
+      const filtered = trimmed
+        ? data.filter((guide) => guide.guideNumber?.toLowerCase().includes(trimmed))
+        : data;
 
-      const filtered = normalized.filter((guide) => {
-        const guideValue = (guide.guideNumber || '').toLowerCase();
-        if (trimmedGuide && !guideValue.includes(trimmedGuide)) {
-          return false;
-        }
-
-        if (applyDateFilters) {
-          const guideDate = parseDateValue(guide.date);
-          if (startBoundary && (!guideDate || guideDate < startBoundary)) {
-            return false;
-          }
-          if (endBoundary && (!guideDate || guideDate > endBoundary)) {
-            return false;
-          }
-        }
-
-        return true;
-      });
-
-      const sorted = filtered.sort((a, b) => {
-        const aDate = parseDateValue(a.date)?.getTime() || 0;
-        const bDate = parseDateValue(b.date)?.getTime() || 0;
-        return bDate - aDate;
-      });
-
-      setQuickGuides(sorted);
-
+      setQuickGuides(filtered);
       setQuickStatus({
         state: 'success',
-        message: sorted.length
-          ? `${sorted.length} guía(s) encontradas.`
-          : 'No se encontraron guías con esos filtros.'
+        message: filtered.length ? `${filtered.length} guía(s) encontradas.` : 'No se encontraron guías con esos filtros.'
       });
     } catch (error) {
-      console.error('Error al cargar guías rápidas:', error);
-      setQuickStatus({ state: 'error', message: error.message || 'No se pudo obtener la información.' });
+      console.error('No se pudieron obtener las guías rápidas:', error);
+      setQuickStatus({ state: 'error', message: error.message || 'No se pudieron obtener las guías solicitadas.' });
     }
-  }, [getGuideRecords, quickFilters]);
+  }, [fetchDestinoGuides, quickFilters]);
+
+  const handleGeneratePdfReport = useCallback(async () => {
+    if (!destinoGuides.length && !ubicacionGuides.length) {
+      setReportStatus({ state: 'error', message: 'No hay datos para generar el informe.' });
+      return;
+    }
+
+    setReportStatus({ state: 'loading', message: 'Generando PDF…' });
+
+    let tempContainer;
+    try {
+      const timestamp = new Date().toLocaleString('es-CL', {
+        dateStyle: 'full',
+        timeStyle: 'short'
+      });
+      const filterEntries = [
+        { label: 'Desde', value: filters.startDate || '—' },
+        { label: 'Hasta', value: filters.endDate || '—' },
+        { label: 'Origen', value: filters.ubicacion || 'Todos' },
+        { label: 'Destino', value: filters.destino || 'Todos' },
+        { label: 'Subdestino', value: filters.subDestino || 'Todos' }
+      ];
+      const statsData = [
+        { label: 'Guías desde origen', value: ubicacionGuides.length },
+        { label: 'Guías en destino', value: destinoGuides.length },
+        { label: 'Coincidencias', value: differences.matches.length },
+        {
+          label: 'Sólo en origen',
+          value: differences.missingInDestino.length
+        },
+        {
+          label: 'Sólo en destino',
+          value: differences.missingInUbicacion.length
+        }
+      ];
+
+      const buildRows = (items, { includeOrigin = true, includeConductor = false, dateOnly = false } = {}) => {
+        if (!items.length) {
+          const span = includeOrigin ? 6 : 5;
+          return `<tr><td colspan="${span}" class="empty">Sin registros</td></tr>`;
+        }
+        return items
+          .map((guide) => `
+            <tr>
+              <td>${escapeHtml(guide.guideNumber || 'Sin número')}</td>
+              <td>${escapeHtml(formatReportDate(guide.date, { dateOnly }))}</td>
+              <td>${escapeHtml(guide.destino || 'No definido')}</td>
+              <td>${escapeHtml(guide.subDestino || 'No definido')}</td>
+              ${includeConductor ? `<td>${escapeHtml(getConductorName(guide))}</td>` : ''}
+              ${includeOrigin ? `<td>${escapeHtml(getLocationLabel(guide))}</td>` : ''}
+            </tr>
+          `)
+          .join('');
+      };
+
+      const buildSection = (title, items, config = {}) => {
+        const {
+          includeOrigin = true,
+          includeConductor = false,
+          note = '',
+          dateOnly = false
+        } = config;
+        return `
+          <section class="data-section">
+            <h3>${title}</h3>
+            ${note ? `<p class="section-note">${note}</p>` : ''}
+            <table>
+              <thead>
+                <tr>
+                  <th>N° Guía</th>
+                  <th>Fecha</th>
+                  <th>Destino</th>
+                  <th>Subdestino</th>
+                  ${includeConductor ? '<th>Conductor</th>' : ''}
+                  ${includeOrigin ? '<th>Origen</th>' : ''}
+                </tr>
+              </thead>
+              <tbody>
+                ${buildRows(items, { includeOrigin, includeConductor, dateOnly })}
+              </tbody>
+            </table>
+          </section>
+        `;
+      };
+
+      const discrepancyCards = `
+        <section class="discrepancy-section">
+          <h2>Alertas de discrepancia</h2>
+          <div class="discrepancy-grid">
+            <article class="discrepancy-card warning">
+              <div class="badge">Origen</div>
+              <strong>${escapeHtml(differences.missingInDestino.length)}</strong>
+              <p>Guías presentes sólo en origen</p>
+            </article>
+            <article class="discrepancy-card danger">
+              <div class="badge">Destino</div>
+              <strong>${escapeHtml(differences.missingInUbicacion.length)}</strong>
+              <p>Guías presentes sólo en destino</p>
+            </article>
+          </div>
+        </section>
+      `;
+
+      const filterSummary = `
+        <section class="summary-block">
+          <div class="filters-grid">
+            ${filterEntries
+              .map(
+                ({ label, value }) => `
+                  <div class="filter-card">
+                    <span class="filter-label">${label}</span>
+                    <span class="filter-value">${escapeHtml(value)}</span>
+                  </div>
+                `
+              )
+              .join('')}
+          </div>
+        </section>
+      `;
+
+      const statsGrid = statsData
+        .map(
+          (item) => `
+            <div class="stat-card">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value)}</strong>
+            </div>
+          `
+        )
+        .join('');
+
+      const html = `
+        <style>
+          .report-root { font-family: 'Segoe UI', 'Rubik', sans-serif; margin: 24px; color: #1f2933; background: #faf7f2; }
+          .report-root .report-top { display: flex; flex-direction: column; gap: 20px; }
+          .report-root .report-hero { background: #ffffff; border-radius: 24px; padding: 28px 32px; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12); border: 1px solid #ede9e0; }
+          .report-root .hero-badge { display: inline-flex; padding: 4px 12px; border-radius: 999px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; background: #f5efe6; color: #9c6b1c; margin-bottom: 12px; }
+          .report-root .report-hero h1 { margin: 0; font-size: 31px; color: #1f1305; }
+          .report-root .hero-subtitle { margin: 6px 0 18px; font-size: 15px; color: #5c5043; }
+          .report-root .timestamp-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: #f5efe6; font-size: 13px; color: #7c4a0b; border: 1px solid #eadfcd; }
+          .report-root .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+          .report-root .filter-card { background: #ffffff; border-radius: 14px; padding: 12px 16px; border: 1px solid #e2e8f0; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08); }
+          .report-root .filter-label { display: block; font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 1px; }
+          .report-root .filter-value { display: block; margin-top: 4px; font-size: 15px; font-weight: 600; color: #0f172a; }
+          .report-root .discrepancy-section { margin-bottom: 12px; }
+          .report-root .discrepancy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+          .report-root .discrepancy-card { border-radius: 14px; padding: 16px; border: 1px solid #f5d0a4; background: #fff7ed; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); }
+          .report-root .discrepancy-card.danger { border-color: #fecaca; background: #fff5f5; }
+          .report-root .discrepancy-card strong { font-size: 32px; display: block; color: #b45309; }
+          .report-root .discrepancy-card.danger strong { color: #b91c1c; }
+          .report-root .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+          .report-root .stat-card { background: #ffffff; border-radius: 12px; padding: 14px 16px; border: 1px solid #dbe2ec; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); }
+          .report-root .stat-card span { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #7b8794; }
+          .report-root .stat-card strong { font-size: 26px; color: #0f172a; }
+          .report-root .data-section { margin-bottom: 28px; background: #fff; border-radius: 16px; padding: 18px 20px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); border: 1px solid #e0e7ff; }
+          .report-root .data-section h3 { margin-bottom: 10px; color: #0f172a; border-left: 4px solid #3a7bd5; padding-left: 8px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
+          .report-root table { width: 100%; border-collapse: separate; border-spacing: 0; background: #fff; border-radius: 12px; border: 1px solid #dbe2ec; overflow: hidden; }
+          .report-root th, .report-root td { padding: 11px 12px; text-align: left; font-size: 13px; }
+          .report-root thead { background: #eff5ff; color: #102a43; }
+          .report-root tbody tr:nth-child(even) { background: #f8fbff; }
+          .report-root .empty { text-align: center; font-style: italic; color: #94a3b8; }
+          .report-root footer { text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px; }
+        </style>
+        <div class="report-root">
+          <section class="report-top">
+            <div class="report-hero">
+              <p class="hero-badge">Resumen operativo</p>
+              <h1>Informe de guías despachadas y recepcionadas</h1>
+              <p class="hero-subtitle">Monitoreo de discrepancias entre el transporte despachado y las recepciones en destino.</p>
+              <div class="timestamp-chip">Generado el ${escapeHtml(timestamp)}</div>
+            </div>
+            ${filterSummary}
+            ${discrepancyCards}
+            <section>
+              <div class="stats-grid">${statsGrid}</div>
+            </section>
+          </section>
+          ${buildSection('Solo en origen (no están en destino)', differences.missingInDestino, {
+            includeOrigin: true,
+            includeConductor: true,
+            dateOnly: true,
+            note: 'Guías que el sistema de transporte reporta como despachadas, pero que aún no han sido recepcionadas en destino.'
+          })}
+          ${buildSection('Solo en destino (no están en origen)', differences.missingInUbicacion, {
+            includeOrigin: true,
+            note: 'Guías recibidas en terreno que todavía no tienen coincidencia con un transporte despachado.'
+          })}
+          <footer>Informe automático generado desde el panel de control.</footer>
+        </div>
+      `;
+
+      tempContainer = document.createElement('div');
+      tempContainer.style.position = 'fixed';
+      tempContainer.style.top = '0';
+      tempContainer.style.left = '-200vw';
+      tempContainer.style.width = '210mm';
+      tempContainer.style.pointerEvents = 'none';
+      tempContainer.style.zIndex = '-1';
+      tempContainer.style.background = '#fff';
+      tempContainer.innerHTML = html;
+      document.body.appendChild(tempContainer);
+
+      const chunkNodes = [
+        tempContainer.querySelector('.report-top'),
+        ...tempContainer.querySelectorAll('.data-section')
+      ].filter(Boolean);
+
+      const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 24;
+      const printableWidth = pageWidth - margin * 2;
+      const pageContentHeight = pageHeight - margin * 2;
+      const chunkSpacing = 12;
+
+      let currentY = margin;
+      let isFirstChunk = true;
+
+      for (const chunk of chunkNodes) {
+        const canvas = await html2canvas(chunk, {
+          scale: 1.2,
+          useCORS: true,
+          backgroundColor: '#ffffff'
+        });
+
+        const imgHeight = (canvas.height * printableWidth) / canvas.width;
+        const imgData = canvas.toDataURL('image/png');
+        const remainingSpace = pageHeight - margin - currentY;
+
+        if (imgHeight <= pageContentHeight) {
+          if (!isFirstChunk && imgHeight > remainingSpace) {
+            pdf.addPage();
+            currentY = margin;
+          }
+          pdf.addImage(imgData, 'PNG', margin, currentY, printableWidth, imgHeight);
+          currentY += imgHeight + chunkSpacing;
+          if (currentY > pageHeight - margin - 20) {
+            pdf.addPage();
+            currentY = margin;
+          }
+        } else {
+          if (!isFirstChunk) {
+            pdf.addPage();
+          }
+          let heightLeft = imgHeight;
+          let firstSlice = true;
+          while (heightLeft > 0) {
+            if (!firstSlice) {
+              pdf.addPage();
+            }
+            firstSlice = false;
+            const position = firstSlice ? margin : margin - (imgHeight - heightLeft);
+            pdf.addImage(imgData, 'PNG', margin, position, printableWidth, imgHeight);
+            heightLeft -= pageContentHeight;
+          }
+          currentY = margin;
+        }
+
+        isFirstChunk = false;
+      }
+
+      const fileName = `informe-guias-${filters.startDate || 'inicio'}-${filters.endDate || 'fin'}.pdf`;
+      pdf.save(fileName);
+      setReportStatus({ state: 'success', message: 'Informe descargado en PDF.' });
+    } catch (error) {
+      console.error('Error al generar informe PDF:', error);
+      setReportStatus({ state: 'error', message: error.message || 'No se pudo generar el informe.' });
+    } finally {
+      if (tempContainer?.parentNode) {
+        tempContainer.parentNode.removeChild(tempContainer);
+      }
+    }
+  }, [destinoGuides.length, differences, filters, ubicacionGuides.length]);
 
   const loadDestinationsCatalog = useCallback(async () => {
     setCatalogLoading((prev) => ({ ...prev, destinations: true }));
@@ -587,71 +1070,18 @@ const DashboardPage = () => {
   }, [getLocationsCatalog]);
 
   useEffect(() => {
-    if (currentUser) {
-      handleCompare();
-      loadDestinationsCatalog();
-      loadLocationsCatalog();
-    }
-  }, [currentUser, handleCompare, loadDestinationsCatalog, loadLocationsCatalog]);
-
-  useEffect(() => {
     if (!currentUser) return;
-    const timeout = setTimeout(() => handleCompare(filters), 200);
+    const timeout = setTimeout(() => {
+      handleCompare(filters);
+    }, 250);
     return () => clearTimeout(timeout);
   }, [filters, handleCompare, currentUser]);
 
-  const totalUbicacion = ubicacionGuides.length;
-  const totalDestino = destinoGuides.length;
-  const totalDiferencias = differences.missingInDestino.length + differences.missingInUbicacion.length;
-  const totalCoincidencias = differences.matches.length;
-
-  const renderGuideList = (
-    items = [],
-    originLabel,
-    emptyLabel,
-    chipColor = 'default',
-    highlightColor = 'transparent'
-  ) => {
-    if (!items.length) {
-      return (
-        <Typography variant="body2" color="text.secondary">
-          {emptyLabel}
-        </Typography>
-      );
-    }
-
-    return (
-      <List dense sx={{ maxHeight: 240, overflow: 'auto' }}>
-        {items.map((guide, index) => (
-          <ListItem
-            key={`${originLabel}-${buildGuideKey(guide)}-${index}`}
-            alignItems="flex-start"
-            sx={{
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              gap: 0.5,
-              backgroundColor: highlightColor,
-              borderRadius: 1,
-              border: '1px solid',
-              borderColor: `${chipColor}.main` || 'divider',
-              mb: 1
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle2">N° {guide.guideNumber || 'Sin número'}</Typography>
-              <Chip size="small" label={originLabel} color={chipColor} variant="outlined" />
-            </Box>
-            <Typography variant="body2">Destino: {guide.destino || 'No definido'}</Typography>
-            <Typography variant="body2">Subdestino: {guide.subDestino || 'No definido'}</Typography>
-            <Typography variant="body2">Origen: {getLocationLabel(guide)}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {formatDate(guide.date)}
-            </Typography>
-          </ListItem>
-        ))}
-      </List>
-    );
-  };
+  useEffect(() => {
+    if (!currentUser) return;
+    loadDestinationsCatalog();
+    loadLocationsCatalog();
+  }, [currentUser, loadDestinationsCatalog, loadLocationsCatalog]);
 
   const renderMatchesList = (items = []) => {
     if (!items.length) {
@@ -702,6 +1132,49 @@ const DashboardPage = () => {
     );
   };
 
+  const renderGuideList = (
+    items = [],
+    title = 'Registros',
+    emptyMessage = 'Sin registros en este rango.',
+    alertSeverity = 'info',
+    backgroundColor = 'rgba(33, 150, 243, 0.08)'
+  ) => {
+    if (!items.length) {
+      return <Alert severity={alertSeverity}>{emptyMessage}</Alert>;
+    }
+
+    return (
+      <List dense sx={{ maxHeight: 280, overflow: 'auto' }}>
+        {items.map((guide, index) => (
+          <ListItem
+            key={`${title}-${guide?.guideNumber || index}`}
+            alignItems="flex-start"
+            sx={{
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 0.5,
+              backgroundColor,
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              mb: 1
+            }}
+          >
+            <Typography variant="subtitle2" fontWeight={600}>
+              N° {guide?.guideNumber || 'Sin número'}
+            </Typography>
+            <Typography variant="body2">Destino: {guide?.destino || 'No definido'}</Typography>
+            <Typography variant="body2">Subdestino: {guide?.subDestino || 'No definido'}</Typography>
+            <Typography variant="body2">Origen: {getLocationLabel(guide)}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {formatDate(guide?.date)}
+            </Typography>
+          </ListItem>
+        ))}
+      </List>
+    );
+  };
+
   const ubicacionOptions = useMemo(() => {
     const names = locationsCatalog
       .map((location) => location.name)
@@ -740,6 +1213,14 @@ const DashboardPage = () => {
     }
   }, [hasSubDestinoFilter, filters.subDestino]);
 
+  const totalUbicacion = ubicacionGuides.length;
+  const totalDestino = destinoGuides.length;
+  const totalDiferencias = differences.missingInDestino.length + differences.missingInUbicacion.length;
+  const totalCoincidencias = differences.matches.length;
+  const intervalFiltersChanged =
+    intervalFiltersDraft.startDate !== intervalFilters.startDate ||
+    intervalFiltersDraft.endDate !== intervalFilters.endDate;
+
   return (
     <Container maxWidth="md" sx={{ pt: 3, pb: 10 }}>
       <Typography variant="h4" component="h1" gutterBottom textAlign="center">
@@ -769,27 +1250,38 @@ const DashboardPage = () => {
           }}
         >
           <Typography variant="h6">Filtros</Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, width: '100%', maxWidth: { xs: '100%', sm: 220 } }}>
-            <Button
-              variant="contained"
-              color={refreshStatus.status === 'error' ? 'error' : 'primary'}
-              startIcon={
-                refreshStatus.status === 'loading' ? (
-                  <CircularProgress size={18} color="inherit" />
-                ) : (
-                  <RefreshIcon />
-                )
-              }
-              onClick={handleManualRefresh}
-              disabled={refreshStatus.status === 'loading' || isComparing}
-              fullWidth
-            >
-              {refreshStatus.status === 'loading' ? 'Actualizando…' : 'Actualizar'}
-            </Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: { xs: '100%', sm: 320 }, gap: 0.5 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: '100%' }}>
+              <Button
+                variant="contained"
+                color={refreshStatus.status === 'error' ? 'error' : 'primary'}
+                startIcon={
+                  refreshStatus.status === 'loading' ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <RefreshIcon />
+                  )
+                }
+                onClick={handleManualRefresh}
+                disabled={refreshStatus.status === 'loading' || isComparing}
+                fullWidth
+              >
+                {refreshStatus.status === 'loading' ? 'Actualizando…' : 'Actualizar'}
+              </Button>
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<PictureAsPdfIcon />}
+                onClick={handleGeneratePdfReport}
+                disabled={reportStatus.state === 'loading'}
+                fullWidth
+              >
+                {reportStatus.state === 'loading' ? 'Generando PDF…' : 'Informe PDF'}
+              </Button>
+            </Stack>
             {refreshStatus.status !== 'idle' && (
               <Typography
                 variant="caption"
-                sx={{ mt: 0.5 }}
                 color=
                   {refreshStatus.status === 'success'
                     ? 'success.main'
@@ -798,6 +1290,19 @@ const DashboardPage = () => {
                       : 'text.secondary'}
               >
                 {refreshStatus.message}
+              </Typography>
+            )}
+            {reportStatus.state !== 'idle' && (
+              <Typography
+                variant="caption"
+                color=
+                  {reportStatus.state === 'success'
+                    ? 'success.main'
+                    : reportStatus.state === 'error'
+                      ? 'error.main'
+                      : 'text.secondary'}
+              >
+                {reportStatus.message}
               </Typography>
             )}
           </Box>
@@ -813,6 +1318,7 @@ const DashboardPage = () => {
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
+
           <Grid item xs={12} sm={6}>
             <TextField
               label="Hasta"
@@ -899,7 +1405,7 @@ const DashboardPage = () => {
           }}
         >
           <Typography variant="subtitle2" color="text.secondary">
-            Guías desde transporte
+            Guías desde origen
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <LocationOn />
@@ -922,7 +1428,7 @@ const DashboardPage = () => {
           }}
         >
           <Typography variant="subtitle2" color="text.secondary">
-            Guías registradas
+            Guías en destino
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CloudSync />
@@ -1334,9 +1840,152 @@ const DashboardPage = () => {
         </Box>
       )}
 
+      <Box sx={{ mt: 6 }} ref={intervalReportRef}>
+        <Typography variant="h5" gutterBottom>
+          Intervalos entre recepciones por conductor
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Este análisis usa sólo las guías que ya fueron registradas en destino con horario confiable.
+        </Typography>
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              label="Desde (intervalos)"
+              type="date"
+              value={intervalFiltersDraft.startDate}
+              onChange={(e) => handleIntervalFilterChange('startDate', e.target.value)}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              label="Hasta (intervalos)"
+              type="date"
+              value={intervalFiltersDraft.endDate}
+              onChange={(e) => handleIntervalFilterChange('endDate', e.target.value)}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={handleApplyIntervalFilters}
+              disabled={!intervalFiltersChanged || intervalStatus.state === 'loading'}
+            >
+              Actualizar intervalos
+            </Button>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {intervalFiltersChanged
+                ? 'Hay cambios pendientes. Presiona actualizar para aplicarlos.'
+                : intervalStatus.state === 'loading'
+                  ? 'Actualizando…'
+                  : intervalStatus.message || 'Filtros aplicados.'}
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              variant="outlined"
+              fullWidth
+              onClick={handleExportIntervalPdf}
+              disabled={intervalPdfStatus.state === 'loading'}
+              startIcon={<PictureAsPdfIcon />}
+            >
+              Exportar PDF
+            </Button>
+            <Typography
+              variant="caption"
+              color={
+                intervalPdfStatus.state === 'success'
+                  ? 'success.main'
+                  : intervalPdfStatus.state === 'error'
+                    ? 'error.main'
+                    : 'text.secondary'
+              }
+              sx={{ display: 'block', mt: 0.5 }}
+            >
+              {intervalPdfStatus.state === 'idle'
+                ? 'Descarga la tabla actual.'
+                : intervalPdfStatus.message}
+            </Typography>
+          </Grid>
+        </Grid>
+
+        {intervalStatus.state === 'loading' ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={20} />
+            <Typography variant="body2">Procesando intervalos…</Typography>
+          </Box>
+        ) : conductorIntervals.length === 0 ? (
+          <Alert severity="info">No hay intervalos en el rango seleccionado.</Alert>
+        ) : (
+          <Paper elevation={3} sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+              <Chip label={`${conductorIntervals.length} conductor(es)`} color="primary" />
+              <Typography variant="body2" color="text.secondary">
+                Intervalos calculados entre recepciones consecutivas por conductor.
+              </Typography>
+            </Box>
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ minWidth: 200 }}>Conductor</TableCell>
+                    {Array.from({ length: maxIntervalColumns }).map((_, idx) => (
+                      <TableCell key={`interval-header-bottom-${idx}`} sx={{ minWidth: 160 }}>
+                        Intervalo {idx + 1}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {conductorIntervals.map((entry) => (
+                    <TableRow key={`interval-bottom-${entry.conductor}`} hover>
+                      <TableCell>
+                        <Typography variant="subtitle2">{entry.conductor}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {entry.intervals.length} intervalo(s) · {entry.receptions} recepción(es)
+                        </Typography>
+                      </TableCell>
+                      {Array.from({ length: maxIntervalColumns }).map((_, idx) => {
+                        const interval = entry.intervals[idx];
+                        return (
+                          <TableCell key={`interval-bottom-cell-${entry.conductor}-${idx}`}>
+                            {interval ? (
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {formatIntervalValue(interval.minutes)}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {interval.fromGuide} → {interval.toGuide}
+                                </Typography>
+                                <Typography variant="caption" color="text.disabled">
+                                  {formatReportDate(interval.toDate)}
+                                </Typography>
+                              </Box>
+                            ) : (
+                              <Typography variant="caption" color="text.disabled">—</Typography>
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              Los intervalos se calculan con la fecha y hora de recepción en destino, emparejando cada número de guía con su conductor registrado en el origen.
+            </Typography>
+          </Paper>
+        )}
+      </Box>
+
       <Dialog
-        open={showDifferencesModal}
-        onClose={() => setShowDifferencesModal(false)}
+        open={Boolean(selectedImage)}
+        onClose={() => setSelectedImage(null)}
         fullWidth
         maxWidth="md"
       >
