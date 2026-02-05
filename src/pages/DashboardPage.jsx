@@ -2004,7 +2004,10 @@ const DashboardPage = () => {
                                       {interval.fromGuide} → {interval.toGuide}
                                     </Typography>
                                     <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
-                                      {new Date(interval.fromDate).toLocaleTimeString('es-CL')} → {new Date(interval.toDate).toLocaleTimeString('es-CL')}
+                                      {new Date(interval.fromDate).toLocaleTimeString('es-CL')}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                                      {new Date(interval.toDate).toLocaleTimeString('es-CL')}
                                     </Typography>
                                     <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
                                       {formatReportDate(interval.toDate, { dateOnly: true })}
