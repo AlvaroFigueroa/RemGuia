@@ -1984,8 +1984,8 @@ const DashboardPage = () => {
       </Box>
 
       <Dialog
-        open={Boolean(selectedImage)}
-        onClose={() => setSelectedImage(null)}
+        open={showDifferencesModal}
+        onClose={() => setShowDifferencesModal(false)}
         fullWidth
         maxWidth="md"
       >
