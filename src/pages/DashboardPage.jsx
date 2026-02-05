@@ -149,6 +149,11 @@ const normalizeGuideNumberKey = (value) => {
   if (!value) return '';
   const base = String(value).trim().toLowerCase();
   if (!base) return '';
+  const numeric = base.replace(/[^0-9]/g, '');
+  if (numeric) {
+    const trimmed = numeric.replace(/^0+/, '');
+    return trimmed || numeric;
+  }
   // remove spaces and separators, drop leading zeros for consistent match
   return base.replace(/[^0-9a-z]/g, '').replace(/^0+/, '') || base.replace(/\s+/g, '');
 };
@@ -496,16 +501,22 @@ const DashboardPage = () => {
 
   const conductorCatalog = useMemo(() => {
     const catalog = new Map();
-    intervalUbicacionGuides.forEach((guide) => {
-      const key = normalizeGuideNumberKey(guide.guideNumber);
+    const registerGuide = (guide) => {
+      const key = normalizeGuideNumberKey(guide?.guideNumber);
       if (!key) return;
       const conductorName = getConductorName(guide);
-      if (!catalog.has(key)) {
-        catalog.set(key, conductorName || 'No registrado');
+      if (!conductorName || conductorName === 'No registrado') {
+        if (!catalog.has(key)) {
+          catalog.set(key, 'No registrado');
+        }
+        return;
       }
-    });
+      catalog.set(key, conductorName);
+    };
+
+    [...intervalUbicacionGuides, ...ubicacionGuides].forEach(registerGuide);
     return catalog;
-  }, [intervalUbicacionGuides]);
+  }, [intervalUbicacionGuides, ubicacionGuides]);
 
   const conductorIntervals = useMemo(() => {
     if (!intervalDestinoGuides.length) return [];
