@@ -502,7 +502,8 @@ const DashboardPage = () => {
   const conductorCatalog = useMemo(() => {
     const catalog = new Map();
     const registerGuide = (guide) => {
-      const key = normalizeGuideNumberKey(guide?.guideNumber);
+      if (!guide) return;
+      const key = normalizeGuideNumberKey(guide.guideNumber);
       if (!key) return;
       const conductorName = getConductorName(guide);
       if (!conductorName || conductorName === 'No registrado') {
@@ -514,9 +515,9 @@ const DashboardPage = () => {
       catalog.set(key, conductorName);
     };
 
-    [...intervalUbicacionGuides, ...ubicacionGuides].forEach(registerGuide);
+    [...intervalUbicacionData, ...ubicacionGuides].forEach(registerGuide);
     return catalog;
-  }, [intervalUbicacionGuides, ubicacionGuides]);
+  }, [intervalUbicacionData, ubicacionGuides]);
 
   const conductorIntervals = useMemo(() => {
     if (!intervalDestinoGuides.length) return [];
@@ -555,9 +556,20 @@ const DashboardPage = () => {
               minutes: diffMinutes,
               fromGuide: previous.guideNumber || 'Sin número',
               toGuide: current.guideNumber || 'Sin número',
+              fromDate: previous.parsedDate,
               toDate: current.parsedDate
             });
           }
+        }
+
+        if (sortedGuides.length) {
+          const lastGuide = sortedGuides[sortedGuides.length - 1];
+          intervals.push({
+            closing: true,
+            guide: lastGuide.guideNumber || 'Sin número',
+            time: lastGuide.parsedDate,
+            date: lastGuide.parsedDate
+          });
         }
 
         return {
@@ -1233,7 +1245,7 @@ const DashboardPage = () => {
     intervalFiltersDraft.endDate !== intervalFilters.endDate;
 
   return (
-    <Container maxWidth="md" sx={{ pt: 3, pb: 10 }}>
+    <Container maxWidth="lg" sx={{ pt: 3, pb: 10 }}>
       <Typography variant="h4" component="h1" gutterBottom textAlign="center">
         Panel de Control
       </Typography>
@@ -1943,9 +1955,9 @@ const DashboardPage = () => {
               <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ minWidth: 200 }}>Conductor</TableCell>
+                    <TableCell sx={{ minWidth: 160, px: 1.5 }}>Conductor</TableCell>
                     {Array.from({ length: maxIntervalColumns }).map((_, idx) => (
-                      <TableCell key={`interval-header-bottom-${idx}`} sx={{ minWidth: 160 }}>
+                      <TableCell key={`interval-header-bottom-${idx}`} sx={{ minWidth: 120, px: 1 }}>
                         Intervalo {idx + 1}
                       </TableCell>
                     ))}
@@ -1954,30 +1966,52 @@ const DashboardPage = () => {
                 <TableBody>
                   {conductorIntervals.map((entry) => (
                     <TableRow key={`interval-bottom-${entry.conductor}`} hover>
-                      <TableCell>
-                        <Typography variant="subtitle2">{entry.conductor}</Typography>
-                        <Typography variant="caption" color="text.secondary">
+                      <TableCell sx={{ px: 1.5 }}>
+                        <Typography variant="subtitle2" sx={{ fontSize: '0.95rem' }}>{entry.conductor}</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
                           {entry.intervals.length} intervalo(s) · {entry.receptions} recepción(es)
                         </Typography>
                       </TableCell>
                       {Array.from({ length: maxIntervalColumns }).map((_, idx) => {
                         const interval = entry.intervals[idx];
                         return (
-                          <TableCell key={`interval-bottom-cell-${entry.conductor}-${idx}`}>
+                          <TableCell key={`interval-bottom-cell-${entry.conductor}-${idx}`} sx={{ px: 1 }}>
                             {interval ? (
                               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                <Typography variant="body2" fontWeight={600}>
-                                  {formatIntervalValue(interval.minutes)}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  {interval.fromGuide} → {interval.toGuide}
-                                </Typography>
-                                <Typography variant="caption" color="text.disabled">
-                                  {formatReportDate(interval.toDate)}
-                                </Typography>
+                                {interval.closing ? (
+                                  <>
+                                    <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.9rem' }}>
+                                      Cierre del día
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                      Guía {interval.guide}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                                      {new Date(interval.time).toLocaleTimeString('es-CL')}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                                      {formatReportDate(interval.date, { dateOnly: true })}
+                                    </Typography>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.9rem' }}>
+                                      {formatIntervalValue(interval.minutes)}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                      {interval.fromGuide} → {interval.toGuide}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                                      {new Date(interval.fromDate).toLocaleTimeString('es-CL')} → {new Date(interval.toDate).toLocaleTimeString('es-CL')}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                                      {formatReportDate(interval.toDate, { dateOnly: true })}
+                                    </Typography>
+                                  </>
+                                )}
                               </Box>
                             ) : (
-                              <Typography variant="caption" color="text.disabled">—</Typography>
+                              <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>—</Typography>
                             )}
                           </TableCell>
                         );
