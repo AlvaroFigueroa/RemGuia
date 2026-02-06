@@ -246,6 +246,96 @@ const formatIntervalValue = (minutes) => {
   return `${hours} h ${restMinutes} min`;
 };
 
+const inferUnitFromKey = (key = '') => {
+  const normalized = key.toLowerCase();
+  if (normalized.includes('ton') || normalized.includes('tn')) return 'ton';
+  if (normalized.includes('kg')) return 'kg';
+  if (normalized.includes('m3') || normalized.includes('m^3')) return 'm³';
+  if (normalized.includes('litro') || normalized.includes('lts')) return 'L';
+  if (normalized.includes('unidad')) return 'unid.';
+  return '';
+};
+
+const toNumericValue = (value) => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.replace(/[\s]/g, '').replace(',', '.');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const findFieldByKeywords = (source, keywords = [], { numericOnly = false } = {}) => {
+  if (!source || typeof source !== 'object') return null;
+  for (const [key, value] of Object.entries(source)) {
+    if (value == null || value === '') continue;
+    const normalizedKey = key.toLowerCase();
+    if (!keywords.some((kw) => normalizedKey.includes(kw))) continue;
+    if (numericOnly) {
+      const numericValue = toNumericValue(value);
+      if (numericValue == null) continue;
+      return { key, value: numericValue, rawValue: value };
+    }
+    return { key, value, rawValue: value };
+  }
+  return null;
+};
+
+const formatCapacityField = (field) => {
+  if (!field) return '';
+  const numericValue = toNumericValue(field.value);
+  if (numericValue != null) {
+    const unit = inferUnitFromKey(field.key) || 'ton';
+    return `${numericValue} ${unit}`.trim();
+  }
+  return String(field.value);
+};
+
+const formatQuantityValue = (value) => {
+  if (!Number.isFinite(value)) return '';
+  return value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+};
+
+const summarizeTotalsByType = (totals = []) => {
+  if (!Array.isArray(totals) || !totals.length) return '';
+  return totals
+    .map(({ type, total }) => {
+      if (!Number.isFinite(total)) return '';
+      const formatted = formatQuantityValue(total);
+      const typeLabel = type && type !== 'Sin tipo' ? ` (${type})` : '';
+      return `${formatted} m³${typeLabel}`.trim();
+    })
+    .filter(Boolean)
+    .join(' · ');
+};
+
+const getGuideCapacityDetails = (guide) => {
+  const record = guide?.rawRecord || guide;
+  if (!record || typeof record !== 'object') {
+    return {};
+  }
+
+  const capacityField = findFieldByKeywords(record, ['capacidad', 'cap_camion', 'capcamion', 'cap_ton', 'm3_camion', 'volumen_camion']);
+  const typeField = findFieldByKeywords(record, ['tipo', 'producto', 'material', 'carga', 'categoria', 'mercaderia', 'especie', 'item']);
+
+  const capacityValue = toNumericValue(capacityField?.value);
+  const capacityLabel = capacityValue != null ? `${capacityValue} m³` : formatCapacityField(capacityField);
+  const typeLabel = typeField?.value ? String(typeField.value).trim() : 'Sin tipo';
+
+  if (capacityValue == null && !capacityLabel && (!typeLabel || typeLabel === 'Sin tipo')) {
+    return null;
+  }
+
+  return {
+    capacityLabel,
+    capacityValue,
+    typeLabel
+  };
+};
+
 const DashboardPage = () => {
   const {
     getGuideRecords,
@@ -519,6 +609,26 @@ const DashboardPage = () => {
     return catalog;
   }, [intervalUbicacionData, ubicacionGuides]);
 
+  const guideDetailCatalog = useMemo(() => {
+    const catalog = new Map();
+    const registerGuide = (guide) => {
+      if (!guide) return;
+      const key = normalizeGuideNumberKey(guide.guideNumber);
+      if (!key) return;
+      const details = getGuideCapacityDetails(guide);
+      if (!details) return;
+      const hasUsefulInfo =
+        Boolean(details.capacityLabel) ||
+        Number.isFinite(details.quantityValue) ||
+        (details.typeLabel && details.typeLabel !== 'Sin tipo');
+      if (!hasUsefulInfo) return;
+      catalog.set(key, details);
+    };
+
+    [...intervalUbicacionData, ...ubicacionGuides].forEach(registerGuide);
+    return catalog;
+  }, [intervalUbicacionData, ubicacionGuides]);
+
   const conductorIntervals = useMemo(() => {
     if (!intervalDestinoGuides.length) return [];
 
@@ -545,46 +655,112 @@ const DashboardPage = () => {
           .filter((guide) => guide.parsedDate instanceof Date && !Number.isNaN(guide.parsedDate.getTime()))
           .sort((a, b) => a.parsedDate - b.parsedDate);
 
+        const guideDetails = sortedGuides.map((guide) => guideDetailCatalog.get(normalizeGuideNumberKey(guide.guideNumber)) || null);
         const intervals = [];
-        for (let i = 1; i < sortedGuides.length; i += 1) {
-          const previous = sortedGuides[i - 1];
-          const current = sortedGuides[i];
-          const diffMs = current.parsedDate - previous.parsedDate;
+        let capacityLabel = '';
+        let capacityValueNumeric = null;
+        const totalsByTypeMap = new Map();
+
+        const resolveIntervalLoad = (detail) => {
+          if (Number.isFinite(detail?.capacityValue)) return detail.capacityValue;
+          if (Number.isFinite(capacityValueNumeric)) return capacityValueNumeric;
+          return 0;
+        };
+
+        sortedGuides.forEach((guide, index) => {
+          const detail = guideDetails[index];
+          if (detail) {
+            if (!capacityLabel && detail.capacityLabel) {
+              capacityLabel = detail.capacityLabel;
+            }
+            if (capacityValueNumeric == null && Number.isFinite(detail.capacityValue)) {
+              capacityValueNumeric = detail.capacityValue;
+            }
+            if (Number.isFinite(detail.capacityValue)) {
+              const typeKey = detail.typeLabel || 'Sin tipo';
+              if (!totalsByTypeMap.has(typeKey)) {
+                totalsByTypeMap.set(typeKey, {
+                  type: detail.typeLabel || 'Sin tipo',
+                  total: 0
+                });
+              }
+              const aggregate = totalsByTypeMap.get(typeKey);
+              aggregate.total += detail.capacityValue;
+            }
+          }
+
+          if (index === 0) {
+            return;
+          }
+
+          const previous = sortedGuides[index - 1];
+          const diffMs = guide.parsedDate - previous.parsedDate;
           const diffMinutes = diffMs / 60000;
           if (Number.isFinite(diffMinutes) && diffMinutes >= 0) {
             intervals.push({
               minutes: diffMinutes,
               fromGuide: previous.guideNumber || 'Sin número',
-              toGuide: current.guideNumber || 'Sin número',
+              toGuide: guide.guideNumber || 'Sin número',
               fromDate: previous.parsedDate,
-              toDate: current.parsedDate
+              toDate: guide.parsedDate,
+              loadValue: resolveIntervalLoad(detail)
             });
           }
-        }
+        });
 
         if (sortedGuides.length) {
           const lastGuide = sortedGuides[sortedGuides.length - 1];
+          const lastDetail = guideDetails[guideDetails.length - 1];
           intervals.push({
             closing: true,
             guide: lastGuide.guideNumber || 'Sin número',
             time: lastGuide.parsedDate,
-            date: lastGuide.parsedDate
+            date: lastGuide.parsedDate,
+            loadValue: resolveIntervalLoad(lastDetail)
           });
         }
+
+        const totalsByType = Array.from(totalsByTypeMap.values()).filter((entry) => Number.isFinite(entry.total) && entry.total > 0);
+        const totalTransported = totalsByType.reduce((sum, entry) => sum + entry.total, 0);
 
         return {
           conductor,
           receptions: sortedGuides.length,
-          intervals
+          intervals,
+          capacityLabel,
+          totalsByType,
+          capacityValue: capacityValueNumeric,
+          totalTransported
         };
       })
       .filter((entry) => entry.receptions > 0)
       .sort((a, b) => b.receptions - a.receptions || a.conductor.localeCompare(b.conductor, 'es'));
-  }, [conductorCatalog, intervalDestinoGuides]);
+  }, [conductorCatalog, intervalDestinoGuides, guideDetailCatalog]);
 
   const maxIntervalColumns = useMemo(() => {
     return conductorIntervals.reduce((max, entry) => Math.max(max, entry.intervals.length), 0);
   }, [conductorIntervals]);
+
+  const totalTransportedDay = useMemo(() => {
+    return conductorIntervals.reduce((sum, entry) => sum + (entry.totalTransported || 0), 0);
+  }, [conductorIntervals]);
+
+  const intervalColumnTotals = useMemo(() => {
+    if (!maxIntervalColumns) return [];
+    const totals = Array.from({ length: maxIntervalColumns }, () => 0);
+    conductorIntervals.forEach((entry) => {
+      for (let idx = 0; idx < maxIntervalColumns; idx += 1) {
+        const interval = entry.intervals[idx];
+        if (!interval) continue;
+        const load = Number.isFinite(interval.loadValue)
+          ? interval.loadValue
+          : entry.capacityValue || 0;
+        if (!Number.isFinite(load) || load <= 0) continue;
+        totals[idx] += load;
+      }
+    });
+    return totals;
+  }, [conductorIntervals, maxIntervalColumns]);
 
   const handleExportIntervalPdf = useCallback(async () => {
     if (!intervalReportRef.current) {
@@ -1169,30 +1345,33 @@ const DashboardPage = () => {
     return (
       <List dense sx={{ maxHeight: 280, overflow: 'auto' }}>
         {items.map((guide, index) => (
-          <ListItem
-            key={`${title}-${guide?.guideNumber || index}`}
-            alignItems="flex-start"
-            sx={{
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              gap: 0.5,
-              backgroundColor,
-              borderRadius: 1,
-              border: '1px solid',
-              borderColor: 'divider',
-              mb: 1
-            }}
-          >
-            <Typography variant="subtitle2" fontWeight={600}>
-              N° {guide?.guideNumber || 'Sin número'}
-            </Typography>
-            <Typography variant="body2">Destino: {guide?.destino || 'No definido'}</Typography>
-            <Typography variant="body2">Subdestino: {guide?.subDestino || 'No definido'}</Typography>
-            <Typography variant="body2">Origen: {getLocationLabel(guide)}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {formatDate(guide?.date)}
-            </Typography>
-          </ListItem>
+          <Box key={`${title}-${guide?.guideNumber || index}`}>
+            <ListItem
+              alignItems="flex-start"
+              sx={{
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 0.5,
+                backgroundColor,
+                borderRadius: 1,
+                border: '1px solid',
+                borderColor: 'divider',
+                mb: 1
+              }}
+            >
+              <Typography variant="subtitle2" fontWeight={600}>
+                N° {guide?.guideNumber || 'Sin número'}
+              </Typography>
+              <Typography variant="body2">Destino: {guide?.destino || 'No definido'}</Typography>
+              <Typography variant="body2">Subdestino: {guide?.subDestino || 'No definido'}</Typography>
+              <Typography variant="body2">Conductor: {getConductorName(guide)}</Typography>
+              <Typography variant="body2">Origen: {getLocationLabel(guide)}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {formatDate(guide?.date)}
+              </Typography>
+            </ListItem>
+            {index < items.length - 1 && <Divider component="li" />}
+          </Box>
         ))}
       </List>
     );
@@ -1305,12 +1484,13 @@ const DashboardPage = () => {
             {refreshStatus.status !== 'idle' && (
               <Typography
                 variant="caption"
-                color=
-                  {refreshStatus.status === 'success'
+                color={
+                  refreshStatus.status === 'success'
                     ? 'success.main'
                     : refreshStatus.status === 'error'
                       ? 'error.main'
-                      : 'text.secondary'}
+                      : 'text.secondary'
+                }
               >
                 {refreshStatus.message}
               </Typography>
@@ -1318,12 +1498,13 @@ const DashboardPage = () => {
             {reportStatus.state !== 'idle' && (
               <Typography
                 variant="caption"
-                color=
-                  {reportStatus.state === 'success'
+                color={
+                  reportStatus.state === 'success'
                     ? 'success.main'
                     : reportStatus.state === 'error'
                       ? 'error.main'
-                      : 'text.secondary'}
+                      : 'text.secondary'
+                }
               >
                 {reportStatus.message}
               </Typography>
@@ -1973,6 +2154,16 @@ const DashboardPage = () => {
                         <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.72rem' }}>
                           {entry.intervals.length} intervalo(s) · {entry.receptions} recepción(es)
                         </Typography>
+                        {entry.capacityLabel && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem' }}>
+                            Capacidad: {entry.capacityLabel}
+                          </Typography>
+                        )}
+                        {entry.totalsByType?.length > 0 && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem' }}>
+                            Total transportado: {summarizeTotalsByType(entry.totalsByType)}
+                          </Typography>
+                        )}
                       </TableCell>
                       {Array.from({ length: maxIntervalColumns }).map((_, idx) => {
                         const interval = entry.intervals[idx];
@@ -2023,6 +2214,31 @@ const DashboardPage = () => {
                       })}
                     </TableRow>
                   ))}
+                  {conductorIntervals.length > 0 && (
+                    <TableRow sx={{ backgroundColor: 'grey.100' }}>
+                      <TableCell sx={{ px: 1.5 }}>
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          Total transportado en el día
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatQuantityValue(totalTransportedDay)} m³
+                        </Typography>
+                      </TableCell>
+                      {Array.from({ length: maxIntervalColumns }).map((_, idx) => (
+                        <TableCell key={`interval-total-${idx}`} sx={{ px: 1 }}>
+                          {intervalColumnTotals[idx] > 0 ? (
+                            <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.85rem' }}>
+                              {formatQuantityValue(intervalColumnTotals[idx])} m³
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                              —
+                            </Typography>
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
