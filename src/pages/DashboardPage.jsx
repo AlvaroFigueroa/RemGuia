@@ -6,7 +6,9 @@ import {
   Paper,
   Grid,
   TextField,
+  Menu,
   MenuItem,
+  FormControlLabel,
   Chip,
   Divider,
   Alert,
@@ -28,7 +30,8 @@ import {
   TableRow,
   TableCell,
   TableContainer,
-  InputAdornment
+  InputAdornment,
+  Switch
 } from '@mui/material';
 import { useFirebase } from '../context/FirebaseContext';
 import {
@@ -49,6 +52,8 @@ const isoDate = (date) => {
   return local.toISOString().split('T')[0];
 };
 const today = new Date();
+const INTERVAL_HIGHLIGHT_STORAGE_KEY = 'interval-highlight-presets-v1';
+const intervalHighlightDefault = { averageDistance: '', routeConditions: '' };
 
 const toComparableText = (value) => {
   if (typeof value === 'string') return value.toLowerCase();
@@ -89,16 +94,6 @@ const getConductorName = (guide) => {
     record?.Operador ??
     '';
   return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : 'No registrado';
-};
-
-const escapeHtml = (value) => {
-  if (value == null) return '';
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 };
 
 const normalizeGuide = (guide, fallback = {}) => {
@@ -312,15 +307,8 @@ const summarizeTotalsByType = (totals = []) => {
     .join(' · ');
 };
 
-const INTERVAL_HIGHLIGHT_STORAGE_KEY = 'interval-highlight-presets';
-const intervalHighlightDefault = { averageDistance: '', routeConditions: '' };
-const buildHighlightRouteKey = (destino = 'Todos', subDestino = 'Todos', origen = 'Todos') => {
-  const safeDestino = destino || 'Todos';
-  const safeSub = subDestino || 'Todos';
-  const safeOrigin = origen || 'Todos';
-  return `${safeDestino}__${safeSub}__${safeOrigin}`;
-};
 const buildLegacyHighlightRouteKey = (destino = 'Todos', subDestino = 'Todos') => `${destino || 'Todos'}__${subDestino || 'Todos'}`;
+const buildHighlightRouteKey = (destino = 'Todos', subDestino = 'Todos', origen = 'Todos') => `${destino || 'Todos'}__${subDestino || 'Todos'}__${origen || 'Todos'}`;
 const normalizeHighlightPreset = (entry = {}) => ({
   destino: entry.destino || 'Todos',
   subDestino: entry.subDestino || 'Todos',
@@ -328,6 +316,12 @@ const normalizeHighlightPreset = (entry = {}) => ({
   averageDistance: entry.averageDistance || '',
   routeConditions: entry.routeConditions || ''
 });
+const normalizeHighlightMap = (map = {}) => {
+  if (!map || typeof map !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(map).map(([key, value]) => [key, normalizeHighlightPreset(value)])
+  );
+};
 
 const getGuideCapacityDetails = (guide) => {
   const record = guide?.rawRecord || guide;
@@ -366,6 +360,12 @@ const DashboardPage = () => {
     deleteRouteHighlight,
     isAdmin
   } = useFirebase();
+  const filtersSectionRef = useRef(null);
+  const statsSectionRef = useRef(null);
+  const tablesSectionRef = useRef(null);
+  const intervalsSectionRef = useRef(null);
+  const notesSectionRef = useRef(null);
+  const quickEditSectionRef = useRef(null);
   const [filters, setFilters] = useState({
     startDate: isoDate(today),
     endDate: isoDate(today),
@@ -410,6 +410,8 @@ const DashboardPage = () => {
   const [quickGuides, setQuickGuides] = useState([]);
   const [quickStatus, setQuickStatus] = useState({ state: 'idle', message: '' });
   const [reportStatus, setReportStatus] = useState({ state: 'idle', message: '' });
+  const [sectionsMenuAnchor, setSectionsMenuAnchor] = useState(null);
+  const sectionsMenuOpen = Boolean(sectionsMenuAnchor);
   const [intervalDestinoData, setIntervalDestinoData] = useState([]);
   const [intervalUbicacionData, setIntervalUbicacionData] = useState([]);
   const [intervalStatus, setIntervalStatus] = useState({ state: 'idle', message: '' });
@@ -420,7 +422,8 @@ const DashboardPage = () => {
     if (typeof window === 'undefined') return {};
     try {
       const stored = window.localStorage.getItem(INTERVAL_HIGHLIGHT_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : {};
+      const parsed = stored ? JSON.parse(stored) : {};
+      return normalizeHighlightMap(parsed);
     } catch (error) {
       console.warn('No se pudieron leer las notas de ruta guardadas:', error);
       return {};
@@ -452,6 +455,36 @@ const DashboardPage = () => {
   const [notesDestination, setNotesDestination] = useState('Todos');
   const [notesSubDestination, setNotesSubDestination] = useState('Todos');
   const [notesOrigin, setNotesOrigin] = useState('Todos');
+  const [notesEditingEnabled, setNotesEditingEnabled] = useState(true);
+  const scrollToSection = useCallback((ref) => {
+    if (ref?.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+    }
+  }, []);
+
+  const handleOpenSectionsMenu = (event) => {
+    setSectionsMenuAnchor(event.currentTarget);
+  };
+
+  const handleCloseSectionsMenu = useCallback(() => {
+    setSectionsMenuAnchor(null);
+  }, []);
+
+  const handleNavigateToSection = useCallback((ref) => {
+    handleCloseSectionsMenu();
+    scrollToSection(ref);
+  }, [handleCloseSectionsMenu, scrollToSection]);
+
+  const sectionsMenuItems = useMemo(() => (
+    [
+      { id: 'filters', label: 'Filtros y acciones', ref: filtersSectionRef },
+      { id: 'stats', label: 'Resumen general', ref: statsSectionRef },
+      { id: 'tables', label: 'Listados de guías', ref: tablesSectionRef },
+      { id: 'intervals', label: 'Intervalos por conductor', ref: intervalsSectionRef },
+      { id: 'notes', label: 'Notas destacadas', ref: notesSectionRef },
+      { id: 'quickEdit', label: 'Edición rápida', ref: quickEditSectionRef }
+    ]
+  ), []);
 
   const intervalFiltersChanged = useMemo(
     () => ['startDate', 'endDate', 'ubicacion', 'destino', 'subDestino'].some(
@@ -609,6 +642,25 @@ const DashboardPage = () => {
   const hasIntervalHighlightData = Boolean(
     intervalDisplayHighlight.averageDistance || intervalDisplayHighlight.routeConditions
   );
+
+  const handleEditIntervalHighlightClick = useCallback(() => {
+    if (!canDisplayIntervalHighlight) return;
+    setNotesDestination(intervalFilters.destino || 'Todos');
+    setNotesSubDestination(intervalFilters.subDestino || 'Todos');
+    setNotesOrigin(intervalFilters.ubicacion || 'Todos');
+    setIntervalFiltersDraft((prev) => ({
+      ...prev,
+      destino: intervalFilters.destino || 'Todos',
+      subDestino: intervalFilters.subDestino || 'Todos',
+      ubicacion: intervalFilters.ubicacion || 'Todos'
+    }));
+    setNotesEditingEnabled(true);
+    scrollToSection(notesSectionRef);
+  }, [canDisplayIntervalHighlight, intervalFilters.destino, intervalFilters.subDestino, intervalFilters.ubicacion, scrollToSection]);
+
+  const handleToggleNotesEditing = useCallback((event) => {
+    setNotesEditingEnabled(event.target.checked);
+  }, []);
 
   useEffect(() => {
     setActiveHighlightRouteKey(deriveHighlightKey(notesDestination, notesSubDestination, notesOrigin));
@@ -1785,9 +1837,21 @@ const DashboardPage = () => {
 
   return (
     <Container maxWidth="lg" sx={{ pt: 3, pb: 10 }}>
-      <Typography variant="h4" component="h1" gutterBottom textAlign="center">
-        Panel de Control
-      </Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between" sx={{ mb: 2 }}>
+        <Typography variant="h4" component="h1">
+          Panel de Control
+        </Typography>
+        <Button variant="outlined" onClick={handleOpenSectionsMenu} aria-haspopup="true" aria-expanded={sectionsMenuOpen ? 'true' : undefined} aria-controls="dashboard-sections-menu">
+          Navegar secciones
+        </Button>
+      </Stack>
+      <Menu id="dashboard-sections-menu" anchorEl={sectionsMenuAnchor} open={sectionsMenuOpen} onClose={handleCloseSectionsMenu} MenuListProps={{ dense: true }}>
+        {sectionsMenuItems.map((item) => (
+          <MenuItem key={item.id} onClick={() => handleNavigateToSection(item.ref)}>
+            {item.label}
+          </MenuItem>
+        ))}
+      </Menu>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -1800,7 +1864,7 @@ const DashboardPage = () => {
         </Alert>
       )}
 
-      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+      <Paper elevation={3} sx={{ p: 3, mb: 4 }} ref={filtersSectionRef}>
         <Box
           sx={{
             display: 'flex',
@@ -1953,6 +2017,7 @@ const DashboardPage = () => {
       </Paper>
 
       <Stack
+        ref={statsSectionRef}
         direction={{ xs: 'column', md: 'row' }}
         spacing={2}
         sx={{ mb: 3, alignItems: 'stretch' }}
@@ -2217,7 +2282,7 @@ const DashboardPage = () => {
       </Paper>
 
       {isAdmin && (
-        <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+        <Paper elevation={3} sx={{ p: 3, mb: 4 }} ref={quickEditSectionRef}>
           <Box sx={{ mb: 2 }}>
             <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>
               Edición rápida de guías
@@ -2406,7 +2471,12 @@ const DashboardPage = () => {
         </Paper>
       )}
 
-      <Paper elevation={3} sx={{ p: 3, mt: 4 }} ref={intervalReportRef}>
+      <Paper elevation={3} sx={{ p: 3, mt: 4 }} ref={(node) => {
+        intervalReportRef.current = node;
+        if (intervalsSectionRef) {
+          intervalsSectionRef.current = node;
+        }
+      }}>
         <Typography variant="h5" gutterBottom>
           Intervalos entre recepciones por conductor
         </Typography>
@@ -2580,6 +2650,9 @@ const DashboardPage = () => {
                       <Typography variant="body1">
                         {intervalDisplayHighlight.routeConditions || 'Sin comentarios registrados.'}
                       </Typography>
+                      <Button sx={{ mt: 2 }} size="small" variant="contained" onClick={handleEditIntervalHighlightClick}>
+                        Editar esta nota
+                      </Button>
                     </Grid>
                   </Grid>
                 ) : (
@@ -2714,11 +2787,20 @@ const DashboardPage = () => {
         )}
       </Paper>
 
-      <Box sx={{ mt: 3 }}>
+      <Box sx={{ mt: 3 }} ref={notesSectionRef}>
         <Typography variant="h6" gutterBottom>
           Notas destacadas por camino
         </Typography>
         <Paper variant="outlined" sx={{ p: 3, borderStyle: 'dashed' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Selecciona origen, destino y subdestino para guardar o actualizar la nota que se mostrará en los reportes.
+            </Typography>
+            <FormControlLabel
+              control={<Switch checked={notesEditingEnabled} onChange={handleToggleNotesEditing} color="primary" />}
+              label={notesEditingEnabled ? 'Edición habilitada' : 'Habilitar edición'}
+            />
+          </Stack>
           <Grid container spacing={2} sx={{ mb: 2 }}>
             <Grid item xs={12} md={4}>
               <TextField
@@ -2731,6 +2813,7 @@ const DashboardPage = () => {
                   setNotesOrigin(value);
                   setIntervalFiltersDraft((prev) => ({ ...prev, ubicacion: value }));
                 }}
+                disabled={!notesEditingEnabled}
                 SelectProps={{ MenuProps: { disableScrollLock: true } }}
               >
                 <MenuItem value="Todos">Selecciona origen</MenuItem>
@@ -2753,6 +2836,7 @@ const DashboardPage = () => {
                   setNotesSubDestination('Todos');
                   setIntervalFiltersDraft((prev) => ({ ...prev, destino: value, subDestino: 'Todos' }));
                 }}
+                disabled={!notesEditingEnabled}
                 SelectProps={{ MenuProps: { disableScrollLock: true } }}
               >
                 <MenuItem value="Todos">Selecciona destino</MenuItem>
@@ -2776,7 +2860,7 @@ const DashboardPage = () => {
                   setNotesSubDestination(value);
                   setIntervalFiltersDraft((prev) => ({ ...prev, subDestino: value }));
                 }}
-                disabled={!notesDestination || notesDestination === 'Todos' || notesSubDestinoOptions.length <= 1}
+                disabled={!notesEditingEnabled || !notesDestination || notesDestination === 'Todos' || notesSubDestinoOptions.length <= 1}
                 SelectProps={{ MenuProps: { disableScrollLock: true } }}
               >
                 {notesSubDestinoOptions.map((option) => (
@@ -2791,7 +2875,7 @@ const DashboardPage = () => {
                 <Button
                   variant="contained"
                   onClick={handleSaveHighlightPreset}
-                  disabled={!canAssociateHighlight || highlightSaving || highlightLoading}
+                  disabled={!notesEditingEnabled || !canAssociateHighlight || highlightSaving || highlightLoading}
                 >
                   {highlightSaving ? 'Guardando…' : 'Guardar detalle para esta ruta'}
                 </Button>
@@ -2799,7 +2883,7 @@ const DashboardPage = () => {
                   variant="text"
                   color="error"
                   onClick={handleClearHighlightPreset}
-                  disabled={!canAssociateHighlight || highlightDeleting || highlightLoading}
+                  disabled={!notesEditingEnabled || !canAssociateHighlight || highlightDeleting || highlightLoading}
                 >
                   {highlightDeleting ? 'Eliminando…' : 'Limpiar notas asociadas'}
                 </Button>
@@ -2825,6 +2909,7 @@ const DashboardPage = () => {
                 inputProps={{ min: 0, step: 0.1 }}
                 value={intervalHighlights.averageDistance}
                 onChange={(e) => handleIntervalHighlightChange('averageDistance', e.target.value)}
+                disabled={!notesEditingEnabled || !canAssociateHighlight || highlightLoading}
                 fullWidth
               />
             </Grid>
@@ -2835,6 +2920,7 @@ const DashboardPage = () => {
                 minRows={3}
                 value={intervalHighlights.routeConditions}
                 onChange={(e) => handleIntervalHighlightChange('routeConditions', e.target.value)}
+                disabled={!notesEditingEnabled || !canAssociateHighlight || highlightLoading}
                 fullWidth
               />
             </Grid>
