@@ -312,6 +312,23 @@ const summarizeTotalsByType = (totals = []) => {
     .join(' · ');
 };
 
+const INTERVAL_HIGHLIGHT_STORAGE_KEY = 'interval-highlight-presets';
+const intervalHighlightDefault = { averageDistance: '', routeConditions: '' };
+const buildHighlightRouteKey = (destino = 'Todos', subDestino = 'Todos', origen = 'Todos') => {
+  const safeDestino = destino || 'Todos';
+  const safeSub = subDestino || 'Todos';
+  const safeOrigin = origen || 'Todos';
+  return `${safeDestino}__${safeSub}__${safeOrigin}`;
+};
+const buildLegacyHighlightRouteKey = (destino = 'Todos', subDestino = 'Todos') => `${destino || 'Todos'}__${subDestino || 'Todos'}`;
+const normalizeHighlightPreset = (entry = {}) => ({
+  destino: entry.destino || 'Todos',
+  subDestino: entry.subDestino || 'Todos',
+  origen: entry.origen || 'Todos',
+  averageDistance: entry.averageDistance || '',
+  routeConditions: entry.routeConditions || ''
+});
+
 const getGuideCapacityDetails = (guide) => {
   const record = guide?.rawRecord || guide;
   if (!record || typeof record !== 'object') {
@@ -344,6 +361,9 @@ const DashboardPage = () => {
     getDestinationsCatalog,
     getLocationsCatalog,
     updateGuideRecord,
+    getRouteHighlight,
+    saveRouteHighlight,
+    deleteRouteHighlight,
     isAdmin
   } = useFirebase();
   const [filters, setFilters] = useState({
@@ -377,14 +397,15 @@ const DashboardPage = () => {
     endDate: isoDate(today),
     guideNumber: ''
   });
-  const [intervalFilters, setIntervalFilters] = useState({
+  const intervalDefaultRange = useMemo(() => ({
     startDate: isoDate(today),
-    endDate: isoDate(today)
-  });
-  const [intervalFiltersDraft, setIntervalFiltersDraft] = useState({
-    startDate: isoDate(today),
-    endDate: isoDate(today)
-  });
+    endDate: isoDate(today),
+    ubicacion: 'Todos',
+    destino: 'Todos',
+    subDestino: 'Todos'
+  }), []);
+  const [intervalFilters, setIntervalFilters] = useState(() => ({ ...intervalDefaultRange }));
+  const [intervalFiltersDraft, setIntervalFiltersDraft] = useState(() => ({ ...intervalDefaultRange }));
   const [intervalPdfStatus, setIntervalPdfStatus] = useState({ state: 'idle', message: '' });
   const [quickGuides, setQuickGuides] = useState([]);
   const [quickStatus, setQuickStatus] = useState({ state: 'idle', message: '' });
@@ -394,12 +415,65 @@ const DashboardPage = () => {
   const [intervalStatus, setIntervalStatus] = useState({ state: 'idle', message: '' });
   const intervalDataInitializedRef = useRef(false);
   const intervalReportRef = useRef(null);
+  const [intervalHighlights, setIntervalHighlights] = useState({ ...intervalHighlightDefault });
+  const [intervalHighlightPresets, setIntervalHighlightPresets] = useState(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const stored = window.localStorage.getItem(INTERVAL_HIGHLIGHT_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch (error) {
+      console.warn('No se pudieron leer las notas de ruta guardadas:', error);
+      return {};
+    }
+  });
+  const [activeHighlightRouteKey, setActiveHighlightRouteKey] = useState(() =>
+    buildHighlightRouteKey(
+      intervalDefaultRange.destino,
+      intervalDefaultRange.subDestino,
+      intervalDefaultRange.ubicacion
+    )
+  );
+  const [highlightSyncStatus, setHighlightSyncStatus] = useState({ state: 'idle', message: '' });
+  const [highlightLoading, setHighlightLoading] = useState(false);
+  const [highlightSaving, setHighlightSaving] = useState(false);
+  const [highlightDeleting, setHighlightDeleting] = useState(false);
+  const intervalHighlightPresetsRef = useRef(intervalHighlightPresets);
+
+  useEffect(() => {
+    intervalHighlightPresetsRef.current = intervalHighlightPresets;
+  }, [intervalHighlightPresets]);
 
   const transporteApiBaseUrl = useMemo(() => {
     const envBase = (import.meta.env.VITE_TRANSPORTE_API || '').trim();
     const base = envBase.length > 0 ? envBase : 'https://guia.codecland.com/api';
     return base.endsWith('/') ? base.slice(0, -1) : base;
   }, []);
+
+  const [notesDestination, setNotesDestination] = useState('Todos');
+  const [notesSubDestination, setNotesSubDestination] = useState('Todos');
+  const [notesOrigin, setNotesOrigin] = useState('Todos');
+
+  const intervalFiltersChanged = useMemo(
+    () => ['startDate', 'endDate', 'ubicacion', 'destino', 'subDestino'].some(
+      (key) => intervalFiltersDraft[key] !== intervalFilters[key]
+    ),
+    [intervalFiltersDraft, intervalFilters]
+  );
+
+  const canAssociateHighlight = useMemo(
+    () => Boolean(notesDestination && notesDestination !== 'Todos' && notesOrigin && notesOrigin !== 'Todos'),
+    [notesDestination, notesOrigin]
+  );
+
+  const currentHighlightRouteLabel = useMemo(() => {
+    if (!notesDestination || notesDestination === 'Todos' || !notesOrigin || notesOrigin === 'Todos') {
+      return 'Selecciona un origen y destino específicos';
+    }
+    const destinationLabel = notesSubDestination && notesSubDestination !== 'Todos'
+      ? `${notesDestination} · ${notesSubDestination}`
+      : notesDestination;
+    return `${notesOrigin} → ${destinationLabel}`;
+  }, [notesDestination, notesOrigin, notesSubDestination]);
 
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
@@ -410,8 +484,61 @@ const DashboardPage = () => {
   };
 
   const handleIntervalFilterChange = (field, value) => {
-    setIntervalFiltersDraft((prev) => ({ ...prev, [field]: value }));
+    setIntervalFiltersDraft((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'destino') {
+        next.subDestino = 'Todos';
+      }
+      return next;
+    });
   };
+
+  const handleIntervalHighlightChange = (field, value) => {
+    setIntervalHighlights((prev) => ({ ...prev, [field]: value }));
+    if (canAssociateHighlight) {
+      setHighlightSyncStatus((prev) =>
+        prev.state === 'loading'
+          ? prev
+          : { state: 'warning', message: 'Hay cambios sin guardar para esta ruta.' }
+      );
+    }
+  };
+
+  useEffect(() => {
+    setNotesDestination(intervalFilters.destino || 'Todos');
+    setNotesSubDestination(intervalFilters.subDestino || 'Todos');
+    setNotesOrigin(intervalFilters.ubicacion || 'Todos');
+  }, [intervalFilters.destino, intervalFilters.subDestino, intervalFilters.ubicacion]);
+
+  const notesSubDestinoOptions = useMemo(() => {
+    if (!notesDestination || notesDestination === 'Todos') return ['Todos'];
+    const entry = destinationsCatalog.find((dest) => dest.name === notesDestination);
+    if (!entry) return ['Todos'];
+    const subs = Array.isArray(entry.subDestinations) && entry.subDestinations.length > 0
+      ? entry.subDestinations
+      : ['NO'];
+    const unique = Array.from(new Set(subs.map((sub) => (sub && sub.trim()) || 'NO'))).filter(Boolean);
+    return ['Todos', ...unique];
+  }, [destinationsCatalog, notesDestination]);
+
+  const ubicacionOptions = useMemo(() => {
+    const names = locationsCatalog
+      .map((location) => location.name)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    return ['Todos', ...names];
+  }, [locationsCatalog]);
+
+  const notesOriginOptions = useMemo(() => ubicacionOptions.filter((option) => option && option !== 'Todos'), [ubicacionOptions]);
+
+  useEffect(() => {
+    setNotesSubDestination((prev) => (notesSubDestinoOptions.includes(prev) ? prev : 'Todos'));
+  }, [notesSubDestinoOptions]);
+
+  useEffect(() => {
+    if (!notesOriginOptions.length) return;
+    setNotesOrigin((prev) => (prev && notesOriginOptions.includes(prev) ? prev : 'Todos'));
+  }, [notesOriginOptions]);
 
   useEffect(() => {
     filtersRef.current = filters;
@@ -427,6 +554,174 @@ const DashboardPage = () => {
     setIntervalDestinoData(destinoGuides);
     setIntervalUbicacionData(ubicacionGuides);
   }, [destinoGuides, ubicacionGuides]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(INTERVAL_HIGHLIGHT_STORAGE_KEY, JSON.stringify(intervalHighlightPresets));
+    } catch (error) {
+      console.warn('No se pudieron guardar las notas de ruta:', error);
+    }
+  }, [intervalHighlightPresets]);
+
+  const deriveHighlightKey = useCallback(
+    (destino, subDestino, origen) => buildHighlightRouteKey(destino, subDestino, origen),
+    []
+  );
+
+  const intervalFiltersHighlightKey = useMemo(
+    () => deriveHighlightKey(intervalFilters.destino, intervalFilters.subDestino, intervalFilters.ubicacion),
+    [intervalFilters.destino, intervalFilters.subDestino, intervalFilters.ubicacion, deriveHighlightKey]
+  );
+
+  const intervalFiltersHighlight = intervalHighlightPresets[intervalFiltersHighlightKey];
+
+  const notesSelectionMatchesFilters =
+    notesDestination === intervalFilters.destino &&
+    notesSubDestination === intervalFilters.subDestino &&
+    notesOrigin === intervalFilters.ubicacion;
+
+  const intervalSectionHighlight = notesSelectionMatchesFilters ? intervalHighlights : intervalFiltersHighlight;
+
+  const canDisplayIntervalHighlight = useMemo(
+    () => Boolean(
+      intervalFilters.ubicacion &&
+      intervalFilters.ubicacion !== 'Todos' &&
+      intervalFilters.destino &&
+      intervalFilters.destino !== 'Todos'
+    ),
+    [intervalFilters.destino, intervalFilters.ubicacion]
+  );
+
+  const intervalHighlightRouteLabel = useMemo(() => {
+    if (!canDisplayIntervalHighlight) return 'Selecciona origen y destino para ver notas.';
+    const subLabel = intervalFilters.subDestino && intervalFilters.subDestino !== 'Todos'
+      ? ` · ${intervalFilters.subDestino}`
+      : '';
+    return `${intervalFilters.ubicacion} → ${intervalFilters.destino}${subLabel}`;
+  }, [canDisplayIntervalHighlight, intervalFilters.destino, intervalFilters.subDestino, intervalFilters.ubicacion]);
+
+  const intervalDisplayHighlight = useMemo(() => ({
+    averageDistance: intervalSectionHighlight?.averageDistance?.toString().trim() || '',
+    routeConditions: intervalSectionHighlight?.routeConditions?.toString().trim() || ''
+  }), [intervalSectionHighlight]);
+
+  const hasIntervalHighlightData = Boolean(
+    intervalDisplayHighlight.averageDistance || intervalDisplayHighlight.routeConditions
+  );
+
+  useEffect(() => {
+    setActiveHighlightRouteKey(deriveHighlightKey(notesDestination, notesSubDestination, notesOrigin));
+  }, [deriveHighlightKey, notesDestination, notesSubDestination, notesOrigin]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!canAssociateHighlight) {
+      setHighlightLoading(false);
+      setIntervalHighlights({ ...intervalHighlightDefault });
+      setHighlightSyncStatus({ state: 'idle', message: 'Selecciona un destino específico para asociar notas.' });
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    const routeParams = {
+      destino: notesDestination,
+      subDestino: notesSubDestination,
+      origen: notesOrigin
+    };
+    const cacheKey = deriveHighlightKey(routeParams.destino, routeParams.subDestino, routeParams.origen);
+
+    const fetchHighlight = async () => {
+      setHighlightLoading(true);
+      setHighlightSyncStatus({ state: 'loading', message: 'Buscando notas guardadas…' });
+      try {
+        const remote = await getRouteHighlight(routeParams);
+        if (isCancelled) return;
+        if (remote) {
+          const payload = {
+            averageDistance: remote.averageDistance || '',
+            routeConditions: remote.routeConditions || ''
+          };
+          setIntervalHighlights({ ...intervalHighlightDefault, ...payload });
+          setIntervalHighlightPresets((prev) => ({ ...prev, [cacheKey]: payload }));
+          setHighlightSyncStatus({ state: 'success', message: 'Notas recuperadas desde Firebase.' });
+        } else {
+          const cached = intervalHighlightPresetsRef.current[cacheKey];
+          if (cached) {
+            setIntervalHighlights({ ...intervalHighlightDefault, ...cached });
+            setHighlightSyncStatus({ state: 'warning', message: 'No hay notas en Firebase, mostrando datos locales.' });
+          } else {
+            const legacyKey = buildLegacyHighlightRouteKey(routeParams.destino, routeParams.subDestino);
+            const legacyCached = intervalHighlightPresetsRef.current[legacyKey];
+            if (legacyCached) {
+              setIntervalHighlights({ ...intervalHighlightDefault, ...legacyCached });
+              setIntervalHighlightPresets((prev) => {
+                if (prev[cacheKey]) return prev;
+                return { ...prev, [cacheKey]: legacyCached };
+              });
+              setHighlightSyncStatus({ state: 'warning', message: 'Convertimos notas guardadas sin origen. Revisa y vuelve a guardar para esta ruta.' });
+            } else {
+              setIntervalHighlights({ ...intervalHighlightDefault });
+              setHighlightSyncStatus({ state: 'idle', message: 'No hay notas guardadas para esta ruta.' });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error al cargar notas de ruta:', error);
+        if (isCancelled) return;
+        const cached = intervalHighlightPresetsRef.current[cacheKey] || intervalHighlightPresetsRef.current[buildLegacyHighlightRouteKey(routeParams.destino, routeParams.subDestino)];
+        setIntervalHighlights({ ...intervalHighlightDefault, ...(cached || {}) });
+        setHighlightSyncStatus({
+          state: 'error',
+          message: error.message || 'No se pudieron cargar las notas desde Firebase. Mostrando datos locales.'
+        });
+      } finally {
+        if (!isCancelled) {
+          setHighlightLoading(false);
+        }
+      }
+    };
+
+    fetchHighlight();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [canAssociateHighlight, deriveHighlightKey, getRouteHighlight, notesDestination, notesSubDestination, notesOrigin]);
+
+  useEffect(() => {
+    if (!canDisplayIntervalHighlight) return;
+    if (notesSelectionMatchesFilters) return;
+    const key = intervalFiltersHighlightKey;
+    if (intervalHighlightPresetsRef.current[key]) return;
+
+    let isCancelled = false;
+    const fetchPresetForFilters = async () => {
+      try {
+        const remote = await getRouteHighlight({
+          destino: intervalFilters.destino,
+          subDestino: intervalFilters.subDestino,
+          origen: intervalFilters.ubicacion
+        });
+        if (isCancelled || !remote) return;
+        const payload = {
+          averageDistance: remote.averageDistance || '',
+          routeConditions: remote.routeConditions || ''
+        };
+        setIntervalHighlightPresets((prev) => ({ ...prev, [key]: payload }));
+      } catch (error) {
+        console.error('Error al precargar notas para los filtros de intervalos:', error);
+      }
+    };
+
+    fetchPresetForFilters();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [canDisplayIntervalHighlight, getRouteHighlight, intervalFilters.destino, intervalFilters.subDestino, intervalFilters.ubicacion, intervalFiltersHighlightKey, notesSelectionMatchesFilters]);
 
   const toDateTimeLocalValue = useCallback((value) => {
     const date = parseDateValue(value);
@@ -1377,14 +1672,6 @@ const DashboardPage = () => {
     );
   };
 
-  const ubicacionOptions = useMemo(() => {
-    const names = locationsCatalog
-      .map((location) => location.name)
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
-    return ['Todos', ...names];
-  }, [locationsCatalog]);
-
   const destinoOptions = useMemo(() => {
     const names = destinationsCatalog
       .map((destination) => destination.name)
@@ -1419,9 +1706,82 @@ const DashboardPage = () => {
   const totalDestino = destinoGuides.length;
   const totalDiferencias = differences.missingInDestino.length + differences.missingInUbicacion.length;
   const totalCoincidencias = differences.matches.length;
-  const intervalFiltersChanged =
-    intervalFiltersDraft.startDate !== intervalFilters.startDate ||
-    intervalFiltersDraft.endDate !== intervalFilters.endDate;
+  const intervalSelectedDestination = useMemo(
+    () => destinationsCatalog.find((dest) => dest.name === intervalFiltersDraft.destino),
+    [destinationsCatalog, intervalFiltersDraft.destino]
+  );
+
+  const intervalSubDestinoOptions = useMemo(() => {
+    const base = ['Todos'];
+    if (!intervalSelectedDestination?.subDestinations?.length) return base;
+    const sorted = [...intervalSelectedDestination.subDestinations].sort((a, b) =>
+      a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
+    return [...base, ...sorted];
+  }, [intervalSelectedDestination]);
+
+  const hasIntervalSubDestinoFilter = intervalSubDestinoOptions.length > 1;
+
+  useEffect(() => {
+    if (!hasIntervalSubDestinoFilter && intervalFiltersDraft.subDestino !== 'Todos') {
+      setIntervalFiltersDraft((prev) => ({ ...prev, subDestino: 'Todos' }));
+    }
+  }, [hasIntervalSubDestinoFilter, intervalFiltersDraft.subDestino]);
+
+  const handleSaveHighlightPreset = useCallback(async () => {
+    if (!canAssociateHighlight) {
+      setHighlightSyncStatus({ state: 'error', message: 'Selecciona un destino específico para guardar estas notas.' });
+      return;
+    }
+    const key = deriveHighlightKey(notesDestination, notesSubDestination, notesOrigin);
+    const sanitized = {
+      averageDistance: intervalHighlights.averageDistance?.toString().trim() || '',
+      routeConditions: intervalHighlights.routeConditions?.trim() || ''
+    };
+    setHighlightSaving(true);
+    setHighlightSyncStatus({ state: 'loading', message: 'Guardando notas en Firebase…' });
+    try {
+      await saveRouteHighlight({
+        destino: notesDestination,
+        subDestino: notesSubDestination,
+        origen: notesOrigin,
+        ...sanitized
+      });
+      setIntervalHighlightPresets((prev) => ({ ...prev, [key]: sanitized }));
+      setHighlightSyncStatus({ state: 'success', message: 'Notas guardadas correctamente en Firebase.' });
+    } catch (error) {
+      console.error('Error al guardar notas de ruta:', error);
+      setHighlightSyncStatus({ state: 'error', message: error.message || 'No se pudieron guardar las notas en Firebase.' });
+    } finally {
+      setHighlightSaving(false);
+    }
+  }, [canAssociateHighlight, deriveHighlightKey, notesDestination, notesSubDestination, notesOrigin, intervalHighlights.averageDistance, intervalHighlights.routeConditions, saveRouteHighlight]);
+
+  const handleClearHighlightPreset = useCallback(async () => {
+    if (!canAssociateHighlight) {
+      setHighlightSyncStatus({ state: 'error', message: 'Selecciona un destino específico para limpiar sus notas.' });
+      return;
+    }
+    const key = deriveHighlightKey(notesDestination, notesSubDestination, notesOrigin);
+    setHighlightDeleting(true);
+    setHighlightSyncStatus({ state: 'loading', message: 'Eliminando notas en Firebase…' });
+    try {
+      await deleteRouteHighlight({ destino: notesDestination, subDestino: notesSubDestination, origen: notesOrigin });
+      setIntervalHighlightPresets((prev) => {
+        if (!prev[key]) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setIntervalHighlights({ ...intervalHighlightDefault });
+      setHighlightSyncStatus({ state: 'success', message: 'Notas eliminadas correctamente.' });
+    } catch (error) {
+      console.error('Error al eliminar notas de ruta:', error);
+      setHighlightSyncStatus({ state: 'error', message: error.message || 'No se pudieron eliminar las notas en Firebase.' });
+    } finally {
+      setHighlightDeleting(false);
+    }
+  }, [canAssociateHighlight, deleteRouteHighlight, deriveHighlightKey, notesDestination, notesSubDestination, notesOrigin]);
 
   return (
     <Container maxWidth="lg" sx={{ pt: 3, pb: 10 }}>
@@ -2053,7 +2413,7 @@ const DashboardPage = () => {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Este análisis usa sólo las guías que ya fueron registradas en destino con horario confiable.
         </Typography>
-        <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
             <TextField
               label="Desde (intervalos)"
@@ -2074,6 +2434,56 @@ const DashboardPage = () => {
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              label="Ubicación"
+              select
+              fullWidth
+              value={intervalFiltersDraft.ubicacion}
+              onChange={(e) => handleIntervalFilterChange('ubicacion', e.target.value)}
+              SelectProps={{ MenuProps: { disableScrollLock: true } }}
+            >
+              {ubicacionOptions.map((option) => (
+                <MenuItem key={`interval-ubicacion-${option}`} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              label="Destino"
+              select
+              fullWidth
+              value={intervalFiltersDraft.destino}
+              onChange={(e) => handleIntervalFilterChange('destino', e.target.value)}
+              SelectProps={{ MenuProps: { disableScrollLock: true } }}
+            >
+              {destinoOptions.map((option) => (
+                <MenuItem key={`interval-destino-${option}`} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          {hasIntervalSubDestinoFilter && (
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="Subdestino"
+                select
+                fullWidth
+                value={intervalFiltersDraft.subDestino}
+                onChange={(e) => handleIntervalFilterChange('subDestino', e.target.value)}
+                SelectProps={{ MenuProps: { disableScrollLock: true } }}
+              >
+                {intervalSubDestinoOptions.map((option) => (
+                  <MenuItem key={`interval-subdestino-${option}`} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+          )}
           <Grid item xs={12} sm={6} md={3}>
             <Button
               variant="contained"
@@ -2117,6 +2527,7 @@ const DashboardPage = () => {
                 : intervalPdfStatus.message}
             </Typography>
           </Grid>
+
         </Grid>
 
         {intervalStatus.state === 'loading' ? (
@@ -2128,6 +2539,60 @@ const DashboardPage = () => {
           <Alert severity="info">No hay intervalos en el rango seleccionado.</Alert>
         ) : (
           <Paper elevation={3} sx={{ p: 3 }}>
+            <Box
+              sx={{
+                backgroundColor: 'grey.50',
+                border: '1px dashed',
+                borderColor: hasIntervalHighlightData ? 'primary.light' : 'grey.300',
+                p: 2,
+                mb: 3,
+                borderRadius: 2
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  Notas destacadas para {intervalHighlightRouteLabel}
+                </Typography>
+                {!canDisplayIntervalHighlight && (
+                  <Chip label="Selecciona origen y destino específicos" color="warning" variant="outlined" />
+                )}
+                {canDisplayIntervalHighlight && notesSelectionMatchesFilters && (
+                  <Chip label="Editando esta ruta" color="primary" variant="outlined" />
+                )}
+              </Stack>
+              {canDisplayIntervalHighlight ? (
+                hasIntervalHighlightData ? (
+                  <Grid container spacing={2} sx={{ mt: 1 }}>
+                    <Grid item xs={12} md={4}>
+                      <Typography variant="overline" color="text.secondary">
+                        Distancia media estimada
+                      </Typography>
+                      <Typography variant="h6">
+                        {intervalDisplayHighlight.averageDistance
+                          ? `${intervalDisplayHighlight.averageDistance} km`
+                          : '—'}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={8}>
+                      <Typography variant="overline" color="text.secondary">
+                        Condiciones de ruta
+                      </Typography>
+                      <Typography variant="body1">
+                        {intervalDisplayHighlight.routeConditions || 'Sin comentarios registrados.'}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                ) : (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    No hay notas guardadas para esta combinación. Usa el panel "Notas destacadas por camino" para agregar una descripción que también aparecerá en el PDF.
+                  </Alert>
+                )
+              ) : (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  Define origen y destino para ver las notas asociadas al intervalo.
+                </Alert>
+              )}
+            </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
               <Chip label={`${conductorIntervals.length} conductor(es)`} color="primary" />
               <Typography variant="body2" color="text.secondary">
@@ -2248,6 +2713,170 @@ const DashboardPage = () => {
           </Paper>
         )}
       </Paper>
+
+      <Box sx={{ mt: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Notas destacadas por camino
+        </Typography>
+        <Paper variant="outlined" sx={{ p: 3, borderStyle: 'dashed' }}>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={12} md={4}>
+              <TextField
+                label="Origen (notas)"
+                select
+                fullWidth
+                value={notesOrigin}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setNotesOrigin(value);
+                  setIntervalFiltersDraft((prev) => ({ ...prev, ubicacion: value }));
+                }}
+                SelectProps={{ MenuProps: { disableScrollLock: true } }}
+              >
+                <MenuItem value="Todos">Selecciona origen</MenuItem>
+                {notesOriginOptions.map((option) => (
+                  <MenuItem key={`notes-origen-${option}`} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                label="Destino (notas)"
+                select
+                fullWidth
+                value={notesDestination}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setNotesDestination(value);
+                  setNotesSubDestination('Todos');
+                  setIntervalFiltersDraft((prev) => ({ ...prev, destino: value, subDestino: 'Todos' }));
+                }}
+                SelectProps={{ MenuProps: { disableScrollLock: true } }}
+              >
+                <MenuItem value="Todos">Selecciona destino</MenuItem>
+                {destinoOptions
+                  .filter((option) => option !== 'Todos')
+                  .map((option) => (
+                    <MenuItem key={`notes-destino-${option}`} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                label="Subdestino (notas)"
+                select
+                fullWidth
+                value={notesSubDestination}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setNotesSubDestination(value);
+                  setIntervalFiltersDraft((prev) => ({ ...prev, subDestino: value }));
+                }}
+                disabled={!notesDestination || notesDestination === 'Todos' || notesSubDestinoOptions.length <= 1}
+                SelectProps={{ MenuProps: { disableScrollLock: true } }}
+              >
+                {notesSubDestinoOptions.map((option) => (
+                  <MenuItem key={`notes-subdestino-${option}`} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  variant="contained"
+                  onClick={handleSaveHighlightPreset}
+                  disabled={!canAssociateHighlight || highlightSaving || highlightLoading}
+                >
+                  {highlightSaving ? 'Guardando…' : 'Guardar detalle para esta ruta'}
+                </Button>
+                <Button
+                  variant="text"
+                  color="error"
+                  onClick={handleClearHighlightPreset}
+                  disabled={!canAssociateHighlight || highlightDeleting || highlightLoading}
+                >
+                  {highlightDeleting ? 'Eliminando…' : 'Limpiar notas asociadas'}
+                </Button>
+              </Stack>
+            </Grid>
+          </Grid>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ mb: 2 }}>
+            <Chip
+              color={canAssociateHighlight ? 'primary' : 'default'}
+              variant={highlightLoading ? 'outlined' : 'filled'}
+              label={highlightLoading ? 'Cargando notas…' : `Ruta activa: ${currentHighlightRouteLabel}`}
+              sx={{ fontWeight: 600 }}
+            />
+          </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Ingresa la distancia media y las condiciones de ruta; al seleccionar un destino y subdestino estas notas se guardan en Firebase y se cargan automáticamente para que también aparezcan en el PDF.
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Distancia media (km)"
+                type="number"
+                inputProps={{ min: 0, step: 0.1 }}
+                value={intervalHighlights.averageDistance}
+                onChange={(e) => handleIntervalHighlightChange('averageDistance', e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={8}>
+              <TextField
+                label="Condiciones de ruta"
+                multiline
+                minRows={3}
+                value={intervalHighlights.routeConditions}
+                onChange={(e) => handleIntervalHighlightChange('routeConditions', e.target.value)}
+                fullWidth
+              />
+            </Grid>
+          </Grid>
+          <Box
+            sx={{
+              mt: 3,
+              p: 2.5,
+              borderRadius: 2,
+              bgcolor: intervalHighlights.routeConditions || intervalHighlights.averageDistance ? 'primary.light' : 'grey.100',
+              color: intervalHighlights.routeConditions || intervalHighlights.averageDistance ? 'primary.contrastText' : 'text.secondary'
+            }}
+          >
+            <Typography variant="subtitle2">Vista previa</Typography>
+            <Typography variant="body2">
+              Distancia media: {intervalHighlights.averageDistance ? `${intervalHighlights.averageDistance} km` : '—'}
+            </Typography>
+            <Typography variant="body2">
+              Condiciones de ruta: {intervalHighlights.routeConditions || '—'}
+            </Typography>
+          </Box>
+          <Typography
+            variant="caption"
+            sx={{ display: 'block', mt: 1.5 }}
+            color={
+              highlightSyncStatus.state === 'error'
+                ? 'error.main'
+                : highlightSyncStatus.state === 'warning'
+                  ? 'warning.main'
+                  : highlightSyncStatus.state === 'success'
+                    ? 'success.main'
+                    : highlightSyncStatus.state === 'loading'
+                      ? 'text.secondary'
+                      : 'text.secondary'
+            }
+          >
+            {highlightSyncStatus.message || (canAssociateHighlight
+              ? 'Los datos se guardan y sincronizan por destino/subdestino.'
+              : 'Selecciona un destino específico para asociar notas.')}
+          </Typography>
+        </Paper>
+      </Box>
 
       <Dialog
         open={showDifferencesModal}

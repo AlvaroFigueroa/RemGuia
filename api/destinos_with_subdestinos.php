@@ -48,7 +48,7 @@ while ($row = $result->fetch_assoc()) {
 
 $result->free();
 
-$subQuery = 'SELECT SubDesGDSur, SubDesGDNorte, subD413884, subD416335, subD417998 FROM destinos';
+$subQuery = 'SELECT SubDesGDSur, SubDesGDNorte, subD413884, subD416335, subD417998, subD422740 FROM destinos';
 $subResult = $mysqli->query($subQuery);
 
 if ($subResult) {
@@ -57,7 +57,8 @@ if ($subResult) {
         'Global Diguillin Norte' => [],
         'SAFI 413884' => [],
         'SAFI 416335' => [],
-        'SAFI 417998' => []
+        'SAFI 417998' => [],
+        'SAFI 422740' => []
     ];
 
     while ($row = $subResult->fetch_assoc()) {
@@ -66,6 +67,7 @@ if ($subResult) {
         $safi413884 = isset($row['subD413884']) ? trim($row['subD413884']) : '';
         $safi416335 = isset($row['subD416335']) ? trim($row['subD416335']) : '';
         $safi417998 = isset($row['subD417998']) ? trim($row['subD417998']) : '';
+        $safi422740 = isset($row['subD422740']) ? trim($row['subD422740']) : '';
 
         if ($sur !== '') {
             $subDestinosMap['Global Diguillin Sur'][] = $sur;
@@ -81,6 +83,9 @@ if ($subResult) {
         }
         if ($safi417998 !== '') {
             $subDestinosMap['SAFI 417998'][] = $safi417998;
+        }
+        if ($safi422740 !== '') {
+            $subDestinosMap['SAFI 422740'][] = $safi422740;
         }
     }
 
@@ -113,7 +118,15 @@ if ($subResult) {
     $mergeValues('SAFI 413884', $subDestinosMap['SAFI 413884']);
     $mergeValues('SAFI 416335', $subDestinosMap['SAFI 416335']);
     $mergeValues('SAFI 417998', $subDestinosMap['SAFI 417998']);
+    $mergeValues('SAFI 422740', $subDestinosMap['SAFI 422740']);
 }
+
+foreach ($destinos as &$destinoInfo) {
+    if (empty($destinoInfo['subDestinations'])) {
+        $destinoInfo['subDestinations'] = ['NO'];
+    }
+}
+unset($destinoInfo);
 
 $mysqli->close();
 

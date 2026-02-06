@@ -8,12 +8,12 @@ import {
   signInWithPopup
 } from 'firebase/auth';
 import { auth, db, storage, adminAuth } from '../firebase/config';
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  where, 
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
   serverTimestamp,
   updateDoc,
   doc,
@@ -417,6 +417,84 @@ export const FirebaseProvider = ({ children }) => {
 
   // Catálogo de destinos y ubicaciones
   const mapTimestamp = (value) => (value?.toDate ? value.toDate() : value || null);
+  const ROUTE_HIGHLIGHTS_COLLECTION = 'routeHighlights';
+
+  const sanitizeRouteSegment = (value) => {
+    const normalized = value?.toString().trim();
+    if (!normalized) return 'todos';
+    return normalized
+      .normalize('NFD')
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_]+/g, '-')
+      .toLowerCase();
+  };
+
+  const buildRouteHighlightKey = (destino = 'Todos', subDestino = 'Todos', origen = 'Todos') => {
+    const safeDestino = sanitizeRouteSegment(destino || 'Todos');
+    const safeSub = sanitizeRouteSegment(subDestino || 'Todos');
+    const safeOrigin = sanitizeRouteSegment(origen || 'Todos');
+    return `${safeDestino}__${safeSub}__${safeOrigin}`;
+  };
+
+  const buildLegacyRouteHighlightKey = (destino = 'Todos', subDestino = 'Todos') => {
+    const safeDestino = sanitizeRouteSegment(destino || 'Todos');
+    const safeSub = sanitizeRouteSegment(subDestino || 'Todos');
+    return `${safeDestino}__${safeSub}`;
+  };
+
+  const getRouteHighlight = useCallback(async ({ destino = 'Todos', subDestino = 'Todos', origen = 'Todos' } = {}) => {
+    const key = buildRouteHighlightKey(destino, subDestino, origen);
+    const docRef = doc(db, ROUTE_HIGHLIGHTS_COLLECTION, key);
+    let snapshot = await getDoc(docRef);
+    if (!snapshot.exists()) {
+      // Compatibilidad con documentos antiguos sin origen
+      const legacyKey = buildLegacyRouteHighlightKey(destino, subDestino);
+      snapshot = await getDoc(doc(db, ROUTE_HIGHLIGHTS_COLLECTION, legacyKey));
+      if (!snapshot.exists()) return null;
+    }
+    return { id: snapshot.id, ...snapshot.data() };
+  }, []);
+
+  const saveRouteHighlight = useCallback(
+    async ({ destino, subDestino = 'Todos', origen = 'Todos', averageDistance = '', routeConditions = '' }) => {
+      const trimmedDestino = destino?.toString().trim();
+      if (!trimmedDestino || trimmedDestino === 'Todos') {
+        throw new Error('Debes seleccionar un destino específico para guardar notas.');
+      }
+      const normalizedOrigin = origen?.toString().trim();
+      if (!normalizedOrigin || normalizedOrigin === 'Todos') {
+        throw new Error('Debes seleccionar un origen específico para guardar notas.');
+      }
+      const normalizedSub = subDestino?.toString().trim() || 'Todos';
+      const key = buildRouteHighlightKey(trimmedDestino, normalizedSub, normalizedOrigin);
+      const payload = {
+        destino: trimmedDestino,
+        subDestino: normalizedSub,
+        origen: normalizedOrigin,
+        averageDistance: averageDistance?.toString().trim() || '',
+        routeConditions: routeConditions?.toString().trim() || '',
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.uid || null
+      };
+      await setDoc(doc(db, ROUTE_HIGHLIGHTS_COLLECTION, key), payload, { merge: true });
+      return { id: key, ...payload };
+    },
+    [currentUser?.uid]
+  );
+
+  const deleteRouteHighlight = useCallback(async ({ destino, subDestino = 'Todos', origen = 'Todos' }) => {
+    const trimmedDestino = destino?.toString().trim();
+    if (!trimmedDestino || trimmedDestino === 'Todos') {
+      throw new Error('Debes indicar un destino específico para eliminar notas.');
+    }
+    const normalizedOrigin = origen?.toString().trim();
+    if (!normalizedOrigin || normalizedOrigin === 'Todos') {
+      throw new Error('Debes indicar un origen específico para eliminar notas.');
+    }
+    const key = buildRouteHighlightKey(trimmedDestino, subDestino?.toString().trim() || 'Todos', normalizedOrigin);
+    await deleteDoc(doc(db, ROUTE_HIGHLIGHTS_COLLECTION, key));
+    return key;
+  }, []);
 
   const isBrowser = typeof window !== 'undefined';
   const CACHE_VERSION = 2;
@@ -636,6 +714,9 @@ export const FirebaseProvider = ({ children }) => {
     guideExists,
     createManagedUser,
     fetchSqlDestinationsCatalog,
+    getRouteHighlight,
+    saveRouteHighlight,
+    deleteRouteHighlight,
     loading,
     profileLoading
   };
