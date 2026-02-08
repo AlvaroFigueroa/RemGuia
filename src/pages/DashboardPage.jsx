@@ -47,6 +47,42 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
+let pdfMakeInstancePromise = null;
+const getPdfMakeInstance = async () => {
+  if (pdfMakeInstancePromise) return pdfMakeInstancePromise;
+  pdfMakeInstancePromise = (async () => {
+    const pdfMakeModule = await import('pdfmake/build/pdfmake');
+    const pdfFontsModule = await import('pdfmake/build/vfs_fonts');
+
+    const pdfMake = pdfMakeModule?.default || pdfMakeModule;
+    if (!pdfMake) {
+      throw new Error('No se pudo cargar pdfMake.');
+    }
+
+    let vfs =
+      pdfFontsModule?.pdfMake?.vfs ||
+      pdfFontsModule?.default?.pdfMake?.vfs ||
+      pdfFontsModule?.default?.vfs ||
+      pdfFontsModule?.vfs;
+
+    if (!vfs && pdfFontsModule && typeof pdfFontsModule === 'object') {
+      const candidateKeys = Object.keys(pdfFontsModule);
+      if (candidateKeys.length && /^Roboto/.test(candidateKeys[0])) {
+        vfs = pdfFontsModule;
+      }
+    }
+
+    if (!vfs) {
+      throw new Error('No se pudo cargar las fuentes de pdfMake.');
+    }
+
+    pdfMake.vfs = vfs;
+    return pdfMake;
+  })();
+
+  return pdfMakeInstancePromise;
+};
+
 const isoDate = (date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().split('T')[0];
@@ -239,6 +275,13 @@ const formatIntervalValue = (minutes) => {
     return `${hours} h`;
   }
   return `${hours} h ${restMinutes} min`;
+};
+
+const formatTimeOfDay = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 const inferUnitFromKey = (key = '') => {
@@ -1109,11 +1152,24 @@ const DashboardPage = () => {
     return totals;
   }, [conductorIntervals, maxIntervalColumns]);
 
+  const averageIntervalMinutes = useMemo(() => {
+    let totalMinutes = 0;
+    let intervalsCount = 0;
+
+    conductorIntervals.forEach((entry) => {
+      entry.intervals.forEach((interval) => {
+        if (interval?.closing) return;
+        if (!Number.isFinite(interval?.minutes)) return;
+        totalMinutes += interval.minutes;
+        intervalsCount += 1;
+      });
+    });
+
+    if (!intervalsCount) return null;
+    return totalMinutes / intervalsCount;
+  }, [conductorIntervals]);
+
   const handleExportIntervalPdf = useCallback(async () => {
-    if (!intervalReportRef.current) {
-      setIntervalPdfStatus({ state: 'error', message: 'No hay contenido para exportar.' });
-      return;
-    }
     if (!conductorIntervals.length) {
       setIntervalPdfStatus({ state: 'error', message: 'No existen intervalos en este rango.' });
       return;
@@ -1122,42 +1178,219 @@ const DashboardPage = () => {
     setIntervalPdfStatus({ state: 'loading', message: 'Generando PDF…' });
 
     try {
-      const canvas = await html2canvas(intervalReportRef.current, {
-        scale: 1.3,
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
+      const pdfMake = await getPdfMakeInstance();
+      const intervalColumns = Array.from({ length: Math.max(maxIntervalColumns, 1) }, (_, idx) => `Vuelta ${idx + 1}`);
 
-      const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
-      const margin = 24;
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const printableWidth = pageWidth - margin * 2;
-      const pageContentHeight = pageHeight - margin * 2;
-      const imgHeight = (canvas.height * printableWidth) / canvas.width;
-      const imgData = canvas.toDataURL('image/png');
+      const tableBody = [
+        [
+          { text: 'Conductor', style: 'tableHeader', fillColor: '#EEF2FF' },
+          ...intervalColumns.map((column) => ({ text: column, style: 'tableHeader', fillColor: '#EEF2FF' }))
+        ],
+        ...conductorIntervals.map((entry) => {
+          const conductorDetails = [
+            { text: entry.conductor || 'Sin conductor', style: 'conductorName' },
+            { text: `${entry.receptions} recepción(es)`, style: 'conductorMeta' }
+          ];
+          if (entry.capacityLabel) {
+            conductorDetails.push({ text: `Capacidad: ${entry.capacityLabel}`, style: 'conductorMeta' });
+          }
+          if (entry.totalsByType?.length) {
+            conductorDetails.push({ text: `Total transportado: ${summarizeTotalsByType(entry.totalsByType)}`, style: 'conductorMeta' });
+          }
 
-      let heightLeft = imgHeight;
-      let position = margin;
+          const intervalCells = intervalColumns.map((_, idx) => {
+            const interval = entry.intervals[idx];
+            if (!interval) {
+              return { text: '—', style: 'intervalMeta' };
+            }
 
-      pdf.addImage(imgData, 'PNG', margin, position, printableWidth, imgHeight);
-      heightLeft -= pageContentHeight;
+            if (interval.closing) {
+              return {
+                stack: [
+                  { text: 'Cierre del día', style: 'intervalTitle' },
+                  { text: `Guía ${interval.guide || '—'}`, style: 'intervalMeta' },
+                  { text: formatReportDate(interval.time || interval.date), style: 'intervalMeta' }
+                ]
+              };
+            }
 
-      while (heightLeft > 0) {
-        pdf.addPage();
-        position = margin - (imgHeight - heightLeft);
-        pdf.addImage(imgData, 'PNG', margin, position, printableWidth, imgHeight);
-        heightLeft -= pageContentHeight;
+            return {
+              stack: [
+                { text: formatIntervalValue(interval.minutes), style: 'intervalTitle' },
+                { text: `${interval.fromGuide || '—'} → ${interval.toGuide || '—'}`, style: 'intervalMeta' },
+                { text: `${formatTimeOfDay(interval.fromDate)} - ${formatTimeOfDay(interval.toDate)}`, style: 'intervalMeta' },
+                { text: formatReportDate(interval.toDate, { dateOnly: true }), style: 'intervalMeta' }
+              ]
+            };
+          });
+
+          return [
+            { stack: conductorDetails, style: 'conductorCell' },
+            ...intervalCells
+          ];
+        })
+      ];
+
+      if (intervalColumnTotals.length) {
+        tableBody.push([
+          {
+            stack: [
+              { text: 'Total transportado en el día', style: 'conductorName' },
+              { text: `${formatQuantityValue(totalTransportedDay)} m³`, style: 'intervalTitle' }
+            ],
+            style: 'conductorCell'
+          },
+          ...intervalColumns.map((_, idx) => ({
+            text: intervalColumnTotals[idx] > 0 ? `${formatQuantityValue(intervalColumnTotals[idx])} m³` : '—',
+            style: 'intervalMeta'
+          }))
+        ]);
       }
 
+      const highlightSection = hasIntervalHighlightData
+        ? {
+            table: {
+              widths: ['*'],
+              body: [[
+                {
+                  columns: [
+                    {
+                      width: '38%',
+                      stack: [
+                        { text: 'Ruta', style: 'highlightLabel' },
+                        { text: intervalHighlightRouteLabel, style: 'highlightValue' }
+                      ]
+                    },
+                    {
+                      width: '24%',
+                      stack: [
+                        { text: 'Distancia media', style: 'highlightLabel' },
+                        { text: intervalDisplayHighlight.averageDistance ? `${intervalDisplayHighlight.averageDistance} km` : '—', style: 'highlightValue' }
+                      ]
+                    },
+                    {
+                      width: '38%',
+                      stack: [
+                        { text: 'Condiciones', style: 'highlightLabel' },
+                        { text: intervalDisplayHighlight.routeConditions || 'Sin comentarios', style: 'highlightText' }
+                      ]
+                    }
+                  ],
+                  columnGap: 12
+                }
+              ]]
+            },
+            layout: {
+              hLineWidth: () => 0,
+              vLineWidth: () => 0,
+              paddingTop: () => 10,
+              paddingBottom: () => 10,
+              paddingLeft: () => 14,
+              paddingRight: () => 14
+            },
+            fillColor: '#E0F2FE',
+            margin: [0, 0, 0, 16],
+            style: 'highlightCard'
+          }
+        : {
+            text: 'No hay notas destacadas asociadas a esta ruta.',
+            style: 'muted',
+            italics: true,
+            margin: [0, 0, 0, 16]
+          };
+
+      const docDefinition = {
+        pageMargins: [36, 40, 36, 40],
+        content: [
+          { text: 'Intervalos por conductor', style: 'title' },
+          { text: `Generado el ${formatReportDate(new Date())}`, style: 'subtitle', margin: [0, 0, 0, 14] },
+          {
+            table: {
+              widths: ['*', '*', '*'],
+              body: [
+                [
+                  { stack: [{ text: 'Desde', style: 'metaLabel' }, { text: intervalFilters.startDate || '—', style: 'metaValue' }] },
+                  { stack: [{ text: 'Hasta', style: 'metaLabel' }, { text: intervalFilters.endDate || '—', style: 'metaValue' }] },
+                  { stack: [{ text: 'Origen', style: 'metaLabel' }, { text: intervalFilters.ubicacion || 'Todos', style: 'metaValue' }] }
+                ],
+                [
+                  { stack: [{ text: 'Destino', style: 'metaLabel' }, { text: intervalFilters.destino || 'Todos', style: 'metaValue' }] },
+                  { stack: [{ text: 'Subdestino', style: 'metaLabel' }, { text: intervalFilters.subDestino || 'Todos', style: 'metaValue' }] },
+                  { stack: [{ text: 'Ruta actual', style: 'metaLabel' }, { text: intervalHighlightRouteLabel, style: 'metaValue' }] }
+                ]
+              ]
+            },
+            layout: {
+              paddingBottom: () => 6,
+              paddingTop: () => 2,
+              hLineWidth: () => 0,
+              vLineWidth: () => 0
+            },
+            margin: [0, 0, 0, 18]
+          },
+          {
+            columns: [
+              { stack: [{ text: 'Conductores analizados', style: 'cardLabel' }, { text: conductorIntervals.length || 0, style: 'cardValue' }], style: 'summaryCard' },
+              { stack: [{ text: 'Volumen total (m³)', style: 'cardLabel' }, { text: formatQuantityValue(totalTransportedDay), style: 'cardValue' }], style: 'summaryCard' },
+              { stack: [{ text: 'Columnas de vueltas', style: 'cardLabel' }, { text: intervalColumns.length, style: 'cardValue' }], style: 'summaryCard' },
+              { stack: [{ text: 'Promedio por vuelta', style: 'cardLabel' }, { text: averageIntervalMinutes != null ? formatIntervalValue(averageIntervalMinutes) : '—', style: 'cardValue' }], style: 'summaryCard' }
+            ],
+            columnGap: 12,
+            margin: [0, 0, 0, 14]
+          },
+          highlightSection,
+          {
+            table: {
+              widths: ['*', ...intervalColumns.map(() => 'auto')],
+              headerRows: 1,
+              body: tableBody
+            },
+            layout: 'lightHorizontalLines'
+          }
+        ],
+        styles: {
+          title: { fontSize: 18, bold: true, color: '#111827' },
+          subtitle: { fontSize: 10, color: '#6B7280' },
+          metaLabel: { fontSize: 9, color: '#94A3B8', letterSpacing: 0.4, margin: [0, 0, 0, 1] },
+          metaValue: { fontSize: 11, color: '#0F172A', bold: true },
+          cardLabel: { fontSize: 9, color: '#6B7280', letterSpacing: 0.4 },
+          cardValue: { fontSize: 16, bold: true, color: '#111827', margin: [0, 4, 0, 0] },
+          summaryCard: {
+            margin: [0, 0, 0, 0],
+            border: [false, false, false, false],
+            fillColor: '#F9FAFB',
+            padding: [12, 10, 12, 10]
+          },
+          tableHeader: { fontSize: 10, bold: true, color: '#1F2937' },
+          conductorCell: { fontSize: 10, color: '#111827' },
+          conductorName: { fontSize: 12, bold: true, color: '#111827' },
+          conductorMeta: { fontSize: 9, color: '#4B5563' },
+          intervalTitle: { fontSize: 11, bold: true, color: '#111827' },
+          intervalMeta: { fontSize: 9, color: '#4B5563' },
+          muted: { fontSize: 9, color: '#9CA3AF' },
+          highlightLabel: { fontSize: 9, color: '#2563EB', letterSpacing: 0.4, margin: [0, 0, 0, 2] },
+          highlightValue: { fontSize: 11, bold: true, color: '#0F172A' },
+          highlightText: { fontSize: 10, color: '#1F2937' }
+        }
+      };
+
       const fileName = `intervalos-conductores-${intervalFilters.startDate || 'inicio'}-${intervalFilters.endDate || 'fin'}.pdf`;
-      pdf.save(fileName);
+      pdfMake.createPdf(docDefinition).download(fileName);
       setIntervalPdfStatus({ state: 'success', message: 'PDF descargado correctamente.' });
     } catch (error) {
       console.error('Error al generar PDF de intervalos:', error);
       setIntervalPdfStatus({ state: 'error', message: error.message || 'No se pudo generar el PDF.' });
     }
-  }, [conductorIntervals.length, intervalFilters]);
+  }, [
+    conductorIntervals,
+    intervalFilters,
+    intervalColumnTotals,
+    intervalDisplayHighlight,
+    intervalHighlightRouteLabel,
+    maxIntervalColumns,
+    totalTransportedDay,
+    hasIntervalHighlightData
+  ]);
 
   const fetchDestinoGuides = useCallback(async (range) => {
     if (!currentUser) {
@@ -2679,7 +2912,7 @@ const DashboardPage = () => {
                     <TableCell sx={{ minWidth: 160, px: 1.5 }}>Conductor</TableCell>
                     {Array.from({ length: maxIntervalColumns }).map((_, idx) => (
                       <TableCell key={`interval-header-bottom-${idx}`} sx={{ minWidth: 120, px: 1 }}>
-                        Intervalo {idx + 1}
+                        Vuelta {idx + 1}
                       </TableCell>
                     ))}
                   </TableRow>
