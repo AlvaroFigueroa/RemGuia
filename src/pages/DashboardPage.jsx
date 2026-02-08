@@ -46,41 +46,38 @@ import SearchIcon from '@mui/icons-material/Search';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import basePdfMake from 'pdfmake/build/pdfmake';
+import pdfMakeFonts from 'pdfmake/build/vfs_fonts';
 
-let pdfMakeInstancePromise = null;
+let cachedPdfMake = null;
 const getPdfMakeInstance = async () => {
-  if (pdfMakeInstancePromise) return pdfMakeInstancePromise;
-  pdfMakeInstancePromise = (async () => {
-    const pdfMakeModule = await import('pdfmake/build/pdfmake');
-    const pdfFontsModule = await import('pdfmake/build/vfs_fonts');
+  if (cachedPdfMake) return cachedPdfMake;
 
-    const pdfMake = pdfMakeModule?.default || pdfMakeModule;
-    if (!pdfMake) {
-      throw new Error('No se pudo cargar pdfMake.');
+  const pdfMake = basePdfMake?.default || basePdfMake;
+  if (!pdfMake) {
+    throw new Error('No se pudo cargar pdfMake.');
+  }
+
+  let vfs =
+    pdfMakeFonts?.pdfMake?.vfs ||
+    pdfMakeFonts?.default?.pdfMake?.vfs ||
+    pdfMakeFonts?.default?.vfs ||
+    pdfMakeFonts?.vfs;
+
+  if (!vfs && pdfMakeFonts && typeof pdfMakeFonts === 'object') {
+    const candidateKeys = Object.keys(pdfMakeFonts);
+    if (candidateKeys.length && /^Roboto/.test(candidateKeys[0])) {
+      vfs = pdfMakeFonts;
     }
+  }
 
-    let vfs =
-      pdfFontsModule?.pdfMake?.vfs ||
-      pdfFontsModule?.default?.pdfMake?.vfs ||
-      pdfFontsModule?.default?.vfs ||
-      pdfFontsModule?.vfs;
+  if (!vfs) {
+    throw new Error('No se pudo cargar las fuentes de pdfMake.');
+  }
 
-    if (!vfs && pdfFontsModule && typeof pdfFontsModule === 'object') {
-      const candidateKeys = Object.keys(pdfFontsModule);
-      if (candidateKeys.length && /^Roboto/.test(candidateKeys[0])) {
-        vfs = pdfFontsModule;
-      }
-    }
-
-    if (!vfs) {
-      throw new Error('No se pudo cargar las fuentes de pdfMake.');
-    }
-
-    pdfMake.vfs = vfs;
-    return pdfMake;
-  })();
-
-  return pdfMakeInstancePromise;
+  pdfMake.vfs = vfs;
+  cachedPdfMake = pdfMake;
+  return cachedPdfMake;
 };
 
 const isoDate = (date) => {
@@ -92,7 +89,7 @@ const INTERVAL_HIGHLIGHT_STORAGE_KEY = 'interval-highlight-presets-v1';
 const intervalHighlightDefault = { averageDistance: '', routeConditions: '' };
 
 const toComparableText = (value) => {
-  if (typeof value === 'string') return value.toLowerCase();
+  if (typeof value === 'string') return value.trim().toLowerCase();
   if (value == null) return '';
   try {
     return String(value).toLowerCase();
@@ -100,6 +97,15 @@ const toComparableText = (value) => {
     console.warn('No se pudo normalizar el valor para comparación:', error, value);
     return '';
   }
+};
+
+const normalizePdfText = (value) => {
+  if (value == null) return '';
+  return String(value)
+    .replace(/[\u0000-\u001f]/g, '')
+    .replace(/[\u202f\u00a0\u2009]/g, ' ')
+    .replace(/\u200e/g, '')
+    .trim();
 };
 
 const matchesFilter = (value, filterValue) => {
@@ -1201,11 +1207,12 @@ const DashboardPage = () => {
           const intervalCells = intervalColumns.map((_, idx) => {
             const interval = entry.intervals[idx];
             if (!interval) {
-              return { text: '—', style: 'intervalMeta' };
+              return { text: '—', style: 'intervalCell' };
             }
 
             if (interval.closing) {
               return {
+                style: 'intervalCell',
                 stack: [
                   { text: 'Cierre del día', style: 'intervalTitle' },
                   { text: `Guía ${interval.guide || '—'}`, style: 'intervalMeta' },
@@ -1214,12 +1221,21 @@ const DashboardPage = () => {
               };
             }
 
+            const fromGuideText = normalizePdfText(interval.fromGuide || '—');
+            const toGuideText = normalizePdfText(interval.toGuide || '—');
+            const fromTimeText = normalizePdfText(formatTimeOfDay(interval.fromDate));
+            const toTimeText = normalizePdfText(formatTimeOfDay(interval.toDate));
+            const dateOnlyText = normalizePdfText(formatReportDate(interval.toDate, { dateOnly: true }));
+
             return {
+              style: 'intervalCell',
               stack: [
                 { text: formatIntervalValue(interval.minutes), style: 'intervalTitle' },
-                { text: `${interval.fromGuide || '—'} → ${interval.toGuide || '—'}`, style: 'intervalMeta' },
-                { text: `${formatTimeOfDay(interval.fromDate)} - ${formatTimeOfDay(interval.toDate)}`, style: 'intervalMeta' },
-                { text: formatReportDate(interval.toDate, { dateOnly: true }), style: 'intervalMeta' }
+                { text: fromGuideText, style: 'intervalMeta' },
+                { text: toGuideText, style: 'intervalMeta' },
+                { text: fromTimeText, style: 'intervalMeta' },
+                { text: toTimeText, style: 'intervalMeta' },
+                { text: dateOnlyText, style: 'intervalMeta' }
               ]
             };
           });
@@ -1242,10 +1258,25 @@ const DashboardPage = () => {
           },
           ...intervalColumns.map((_, idx) => ({
             text: intervalColumnTotals[idx] > 0 ? `${formatQuantityValue(intervalColumnTotals[idx])} m³` : '—',
-            style: 'intervalMeta'
+            style: 'intervalCell'
           }))
         ]);
       }
+
+      const intervalTableLayout = {
+        fillColor: (rowIndex) => {
+          if (rowIndex === 0) return null;
+          return rowIndex % 2 === 0 ? '#F8FAFC' : null;
+        },
+        hLineColor: () => '#E5E7EB',
+        hLineWidth: (rowIndex, node) => (rowIndex === 0 || rowIndex === node.table.body.length ? 0.8 : 0.4),
+        vLineColor: () => '#E5E7EB',
+        vLineWidth: () => 0.3,
+        paddingTop: () => 8,
+        paddingBottom: () => 6,
+        paddingLeft: () => 10,
+        paddingRight: () => 10
+      };
 
       const highlightSection = hasIntervalHighlightData
         ? {
@@ -1345,7 +1376,7 @@ const DashboardPage = () => {
               headerRows: 1,
               body: tableBody
             },
-            layout: 'lightHorizontalLines'
+            layout: intervalTableLayout
           }
         ],
         styles: {
@@ -1362,11 +1393,12 @@ const DashboardPage = () => {
             padding: [12, 10, 12, 10]
           },
           tableHeader: { fontSize: 10, bold: true, color: '#1F2937' },
-          conductorCell: { fontSize: 10, color: '#111827' },
-          conductorName: { fontSize: 12, bold: true, color: '#111827' },
+          conductorCell: { fontSize: 10, color: '#111827', margin: [0, 0, 0, 4] },
+          conductorName: { fontSize: 12, bold: true, color: '#111827', margin: [0, 0, 0, 2] },
           conductorMeta: { fontSize: 9, color: '#4B5563' },
-          intervalTitle: { fontSize: 11, bold: true, color: '#111827' },
-          intervalMeta: { fontSize: 9, color: '#4B5563' },
+          intervalCell: { fontSize: 10, color: '#111827' },
+          intervalTitle: { fontSize: 11, bold: true, color: '#0F172A', margin: [0, 0, 0, 2] },
+          intervalMeta: { fontSize: 9, color: '#6B7280' },
           muted: { fontSize: 9, color: '#9CA3AF' },
           highlightLabel: { fontSize: 9, color: '#2563EB', letterSpacing: 0.4, margin: [0, 0, 0, 2] },
           highlightValue: { fontSize: 11, bold: true, color: '#0F172A' },
