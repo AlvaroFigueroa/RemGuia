@@ -25,6 +25,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Crear el contexto
 const FirebaseContext = createContext();
+const PROGRAM_ONLY_EMAIL = 'pablosandovalu57@gmail.com';
 const TRANSPORT_PROGRAM_COLLECTION = 'transportProgram';
 const TRANSPORT_PROGRAM_DOC_ID = 'current';
 
@@ -722,10 +723,13 @@ export const FirebaseProvider = ({ children }) => {
     return uid;
   };
 
+  const isProgramOnlyUser = currentUser?.email?.toLowerCase() === PROGRAM_ONLY_EMAIL;
+
   const value = {
     currentUser,
     currentUserProfile,
     isAdmin: currentUserProfile?.role === 'admin',
+    isProgramOnlyUser,
     login,
     loginWithGoogle,
     signup,

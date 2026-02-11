@@ -7,9 +7,14 @@ import { useFirebase } from '../context/FirebaseContext';
 const Navigation = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin } = useFirebase();
+  const { isAdmin, isProgramOnlyUser } = useFirebase();
 
   const tabs = useMemo(() => {
+    if (isProgramOnlyUser) {
+      return [
+        { label: 'Programa', icon: <LocationOn />, path: '/programa' }
+      ];
+    }
     if (isAdmin) {
       return [
         { label: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
@@ -23,7 +28,7 @@ const Navigation = () => {
       { label: 'Registros', icon: <History />, path: '/history' },
       { label: 'Configuración', icon: <Settings />, path: '/config' }
     ];
-  }, [isAdmin]);
+  }, [isAdmin, isProgramOnlyUser]);
 
   const [value, setValue] = useState(() => {
     const index = tabs.findIndex((tab) => location.pathname.startsWith(tab.path));

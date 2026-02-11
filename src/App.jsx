@@ -40,7 +40,7 @@ const theme = createTheme({
 
 // Componente de enrutamiento protegido con Firebase
 const AppRoutes = () => {
-  const { currentUser, loading, logout, isAdmin, profileLoading } = useFirebase();
+  const { currentUser, loading, logout, isAdmin, profileLoading, isProgramOnlyUser } = useFirebase();
   const [isReady, setIsReady] = useState(false);
 
   const handleLogout = async () => {
@@ -101,31 +101,54 @@ const AppRoutes = () => {
         {/* Separador para evitar que el contenido quede oculto bajo el AppBar */}
         <Toolbar sx={{ display: { xs: 'block', sm: 'none' } }} />
         <Routes>
-          <Route path="/login" element={!currentUser ? <LoginPage /> : <Navigate to="/scan" />} />
+          <Route path="/login" element={!currentUser ? <LoginPage /> : <Navigate to={isProgramOnlyUser ? '/programa' : '/scan'} />} />
           <Route
             path="/dashboard"
-            element={currentUser ? (isAdmin ? <DashboardPage /> : <Navigate to="/scan" replace />) : <Navigate to="/login" />}
+            element={currentUser
+              ? isProgramOnlyUser
+                ? <Navigate to="/programa" replace />
+                : (isAdmin ? <DashboardPage /> : <Navigate to="/scan" replace />)
+              : <Navigate to="/login" />}
           />
           <Route
             path="/scan"
-            element={currentUser ? (isAdmin ? <Navigate to="/dashboard" replace /> : <ScanPage />) : <Navigate to="/login" />}
+            element={currentUser
+              ? isProgramOnlyUser
+                ? <Navigate to="/programa" replace />
+                : (isAdmin ? <Navigate to="/dashboard" replace /> : <ScanPage />)
+              : <Navigate to="/login" />}
           />
           <Route
             path="/history"
-            element={currentUser ? (isAdmin ? <Navigate to="/dashboard" replace /> : <HistoryPage />) : <Navigate to="/login" />}
+            element={currentUser
+              ? isProgramOnlyUser
+                ? <Navigate to="/programa" replace />
+                : (isAdmin ? <Navigate to="/dashboard" replace /> : <HistoryPage />)
+              : <Navigate to="/login" />}
           />
           <Route
             path="/users"
-            element={currentUser ? (isAdmin ? <UsersManagementPage /> : <Navigate to="/scan" replace />) : <Navigate to="/login" />}
+            element={currentUser
+              ? isProgramOnlyUser
+                ? <Navigate to="/programa" replace />
+                : (isAdmin ? <UsersManagementPage /> : <Navigate to="/scan" replace />)
+              : <Navigate to="/login" />}
           />
           <Route
             path="/programa"
-            element={currentUser ? (isAdmin ? <ProgramaTransportePage /> : <Navigate to="/scan" replace />) : <Navigate to="/login" />}
+            element={currentUser
+              ? (isAdmin || isProgramOnlyUser ? <ProgramaTransportePage /> : <Navigate to="/scan" replace />)
+              : <Navigate to="/login" />}
           />
-          <Route path="/config" element={currentUser ? <ConfigPage /> : <Navigate to="/login" />} />
+          <Route
+            path="/config"
+            element={currentUser
+              ? (isProgramOnlyUser ? <Navigate to="/programa" replace /> : <ConfigPage />)
+              : <Navigate to="/login" />}
+          />
           <Route
             path="/"
-            element={<Navigate to={currentUser ? (isAdmin ? '/dashboard' : '/scan') : '/login'} />}
+            element={<Navigate to={currentUser ? (isProgramOnlyUser ? '/programa' : (isAdmin ? '/dashboard' : '/scan')) : '/login'} />}
           />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

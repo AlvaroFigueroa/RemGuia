@@ -33,7 +33,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useFirebase } from '../context/FirebaseContext';
 import basePdfMake from 'pdfmake/build/pdfmake';
 import pdfMakeFonts from 'pdfmake/build/vfs_fonts';
-import remfiscLogo from '../assets/remfisc_logo_color.jpg';
+// Logo removal: currently PDF export does not embed external images
 
 const createId = (prefix = 'id') => {
   const random = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -602,38 +602,47 @@ const ProgramaTransportePage = () => {
   const [focusedRowId, setFocusedRowId] = useState('');
 
   useEffect(() => {
-    let isMounted = true;
-    const fetchProgram = async () => {
+    let cancelled = false;
+
+    const ensureColumnIds = (columns = []) =>
+      (Array.isArray(columns) ? columns : []).map((column) => ({
+        ...column,
+        id: column.id || createId('dest')
+      }));
+
+    const loadProgram = async () => {
+      setLoading(true);
+      setError('');
       try {
-        setLoading(true);
-        const snapshot = await getTransportProgram();
-        if (!isMounted) return;
-        if (snapshot) {
-          const normalized = normalizeProgram({
-            ...snapshot,
-            updatedAt: snapshot.updatedAt?.toDate ? snapshot.updatedAt.toDate() : snapshot.updatedAt || null
-          });
-          setProgramData(normalized);
-        } else {
-          setProgramData(defaultProgramTemplate());
-        }
-        setError('');
-      } catch (fetchError) {
-        console.error(fetchError);
-        if (isMounted) {
-          setError(fetchError?.message || 'No se pudo cargar el programa.');
+        const remote = await getTransportProgram();
+        if (cancelled) return;
+
+        const base = defaultProgramTemplate();
+        const merged = remote ? { ...base, ...remote } : base;
+        const columns = ensureColumnIds(merged.destinationColumns);
+        const rows = syncRowsWithColumns(Array.isArray(merged.rows) ? merged.rows : [], columns);
+
+        setProgramData({
+          ...merged,
+          destinationColumns: columns,
+          rows
+        });
+      } catch (loadError) {
+        console.error(loadError);
+        if (!cancelled) {
+          setError(loadError?.message || 'No se pudo cargar el programa.');
         }
       } finally {
-        if (isMounted) {
+        if (!cancelled) {
           setLoading(false);
-          setUnsavedChanges(false);
         }
       }
     };
 
-    fetchProgram();
+    loadProgram();
+
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
   }, [getTransportProgram]);
 
@@ -924,19 +933,8 @@ const ProgramaTransportePage = () => {
         pageMargins: [20, 30, 28, 30],
         content: [
           {
-            columns: [
-              {
-                text: `${programData.title?.toUpperCase?.() || programData.title} ${formatProgramDate(programData.date)}`,
-                style: 'title',
-                width: '*'
-              },
-              {
-                image: 'remfiscLogo',
-                width: 110,
-                height: 48,
-                alignment: 'right'
-              }
-            ]
+            text: `${programData.title?.toUpperCase?.() || programData.title} ${formatProgramDate(programData.date)}`,
+            style: 'title'
           },
           {
             table: {
@@ -985,13 +983,13 @@ const ProgramaTransportePage = () => {
         defaultStyle: {
           fontSize: 8,
           color: '#0f172a'
-        },
-        images: {
-          remfiscLogo: remfiscLogo
         }
       };
 
-      pdfMake.createPdf(docDefinition).open();
+      const dateLabel = programData.date ? formatProgramDate(programData.date) : '—';
+      const safeDateLabel = dateLabel.replaceAll('/', '-');
+      const filename = `Programa de transporte - ${safeDateLabel}.pdf`;
+      pdfMake.createPdf(docDefinition).download(filename);
       setPdfStatus({ state: 'success', message: 'PDF generado en una nueva pestaña.' });
     } catch (pdfError) {
       console.error(pdfError);
