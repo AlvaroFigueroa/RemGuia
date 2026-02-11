@@ -33,7 +33,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useFirebase } from '../context/FirebaseContext';
 import basePdfMake from 'pdfmake/build/pdfmake';
 import pdfMakeFonts from 'pdfmake/build/vfs_fonts';
-import remfiscLogo from '../img/remfisc_logo_color.jpg';
+import remfiscLogo from '../assets/remfisc_logo_color.jpg';
 
 const createId = (prefix = 'id') => {
   const random = typeof crypto !== 'undefined' && crypto.randomUUID
