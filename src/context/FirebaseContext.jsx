@@ -158,6 +158,9 @@ export const FirebaseProvider = ({ children }) => {
     if (typeof payload.subDestination !== 'undefined') {
       sanitizedPayload.subDestination = payload.subDestination;
     }
+    if (typeof payload.guideNumber !== 'undefined') {
+      sanitizedPayload.guideNumber = payload.guideNumber;
+    }
 
     await updateDoc(docRef, sanitizedPayload);
   };

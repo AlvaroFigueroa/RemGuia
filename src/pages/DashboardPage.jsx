@@ -857,6 +857,9 @@ const DashboardPage = () => {
     if (buffer && Object.prototype.hasOwnProperty.call(buffer, field)) {
       return buffer[field];
     }
+    if (field === 'guideNumber') {
+      return guide.guideNumber || '';
+    }
     if (field === 'date') {
       return toDateTimeLocalValue(guide.date);
     }
@@ -887,20 +890,25 @@ const DashboardPage = () => {
     if (!id) return false;
     const buffer = editBuffer[id];
     if (!buffer?.dirty) return false;
+    const guideNumberChanged = typeof buffer.guideNumber !== 'undefined' && buffer.guideNumber !== (guide.guideNumber || '');
     const baseDate = toDateTimeLocalValue(guide.date);
     const dateChanged = typeof buffer.date !== 'undefined' && buffer.date !== baseDate;
     const destinoChanged = typeof buffer.destino !== 'undefined' && buffer.destino !== (guide.destino || '');
     const subChanged = typeof buffer.subDestino !== 'undefined' && buffer.subDestino !== (guide.subDestino || '');
-    return dateChanged || destinoChanged || subChanged;
+    return guideNumberChanged || dateChanged || destinoChanged || subChanged;
   };
 
   const handleSaveGuide = async (guide) => {
     const id = getGuideId(guide);
     if (!id) return;
     const buffer = editBuffer[id] || {};
+    const guideNumberBase = guide.guideNumber || '';
     const baseDate = toDateTimeLocalValue(guide.date);
     const payload = {};
 
+    if (typeof buffer.guideNumber !== 'undefined' && buffer.guideNumber !== guideNumberBase) {
+      payload.guideNumber = buffer.guideNumber?.trim?.() || '';
+    }
     if (typeof buffer.date !== 'undefined' && buffer.date !== baseDate) {
       const parsed = new Date(buffer.date);
       if (!Number.isNaN(parsed.getTime())) {
@@ -2646,12 +2654,19 @@ const DashboardPage = () => {
                   return (
                     <TableRow key={`${guideId}-${guide.guideNumber}`} hover>
                       <TableCell>
-                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                          <Typography variant="subtitle2">N° {guide.guideNumber}</Typography>
+                        <Stack spacing={0.5}>
+                          <TextField
+                            size="small"
+                            fullWidth
+                            value={getEditValue(guide, 'guideNumber')}
+                            onChange={(e) => handleEditFieldChange(guide, 'guideNumber', e.target.value)}
+                            placeholder="Ej: 60892"
+                            inputProps={{ maxLength: 32 }}
+                          />
                           <Typography variant="caption" color="text.secondary">
                             Origen: {guide.ubicacion || 'No definido'}
                           </Typography>
-                        </Box>
+                        </Stack>
                       </TableCell>
                       <TableCell>
                         <TextField
