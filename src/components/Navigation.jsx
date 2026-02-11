@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { BottomNavigation, BottomNavigationAction, Paper } from '@mui/material';
-import { Dashboard, QrCodeScanner, History, Settings, Users, LocationOn } from './AppIcons';
+import { Dashboard, QrCodeScanner, History, Settings, Users, LocationOn, Storage } from './AppIcons';
 import { useFirebase } from '../context/FirebaseContext';
 
 const Navigation = () => {
@@ -19,6 +19,7 @@ const Navigation = () => {
       return [
         { label: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
         { label: 'Programa', icon: <LocationOn />, path: '/programa' },
+        { label: 'Informes Áridos', icon: <Storage />, path: '/informes-aridos' },
         { label: 'Usuarios', icon: <Users />, path: '/users' },
         { label: 'Configuración', icon: <Settings />, path: '/config' }
       ];

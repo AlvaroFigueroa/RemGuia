@@ -18,6 +18,7 @@ import ScanPage from './pages/ScanPage'
 import HistoryPage from './pages/HistoryPage'
 import ConfigPage from './pages/ConfigPage'
 import ProgramaTransportePage from './pages/ProgramaTransportePage'
+import InformesAridosPage from './pages/InformesAridosPage'
 import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
 
@@ -138,6 +139,12 @@ const AppRoutes = () => {
             path="/programa"
             element={currentUser
               ? (isAdmin || isProgramOnlyUser ? <ProgramaTransportePage /> : <Navigate to="/scan" replace />)
+              : <Navigate to="/login" />}
+          />
+          <Route
+            path="/informes-aridos"
+            element={currentUser
+              ? (isAdmin ? <InformesAridosPage /> : <Navigate to={isProgramOnlyUser ? '/programa' : '/scan'} replace />)
               : <Navigate to="/login" />}
           />
           <Route
