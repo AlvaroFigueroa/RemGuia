@@ -33,6 +33,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useFirebase } from '../context/FirebaseContext';
 import basePdfMake from 'pdfmake/build/pdfmake';
 import pdfMakeFonts from 'pdfmake/build/vfs_fonts';
+import remfiscLogo from '../img/remfisc_logo_color.jpg';
 
 const createId = (prefix = 'id') => {
   const random = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -518,7 +519,7 @@ const plateComboInputSx = {
 
 const buildPdfColumnWidths = (destinationColumns = [], pageSize = 'legal') => {
   const fixedColumns = [40, 38, 26, 50, 78, 71, 50];
-  const observationWidth = 100;
+  const observationWidth = 150;
   const usableWidth = pageSize?.toLowerCase?.() === 'letter' ? 820 : 920;
 
   const columns = Array.isArray(destinationColumns) ? destinationColumns : [];
@@ -576,8 +577,15 @@ const formatPdfHeaderLabel = (label = '') => {
   if (upper === 'SITUACIÓN CONDUCTOR') return 'SITUACIÓN\nCONDUCTOR';
   if (upper === 'LUGAR DE CARGA') return 'LUGAR DE\nCARGA';
   if (upper === 'TIPO EQUIPO') return 'TIPO\nEQUIPO';
-  if (upper === 'OBSERVACIONES') return 'OBSERVA\nCIONES';
+  if (upper === 'OBSERVACIONES') return 'OBSERVACIONES';
   return upper;
+};
+
+const formatProgramDate = (dateString) => {
+  if (!dateString) return '—';
+  const [year, month, day] = dateString.split('-');
+  if (!year || !month || !day) return dateString;
+  return `${day}/${month}/${year}`;
 };
 
 const ProgramaTransportePage = () => {
@@ -884,7 +892,7 @@ const ProgramaTransportePage = () => {
           text: formatted,
           style: 'tableHeader',
           margin: isSafi ? [0, -2, 0, 0] : [0, 25, 0, 0],
-          alignment: isObservation ? 'left' : 'center'
+          alignment: isObservation ? 'center' : 'center'
         };
       });
 
@@ -916,8 +924,19 @@ const ProgramaTransportePage = () => {
         pageMargins: [20, 30, 28, 30],
         content: [
           {
-            text: `${programData.title?.toUpperCase?.() || programData.title} ${new Date(programData.date).toLocaleDateString('es-CL')}`,
-            style: 'title'
+            columns: [
+              {
+                text: `${programData.title?.toUpperCase?.() || programData.title} ${formatProgramDate(programData.date)}`,
+                style: 'title',
+                width: '*'
+              },
+              {
+                image: 'remfiscLogo',
+                width: 110,
+                height: 48,
+                alignment: 'right'
+              }
+            ]
           },
           {
             table: {
@@ -966,6 +985,9 @@ const ProgramaTransportePage = () => {
         defaultStyle: {
           fontSize: 8,
           color: '#0f172a'
+        },
+        images: {
+          remfiscLogo: remfiscLogo
         }
       };
 
@@ -1014,8 +1036,20 @@ const ProgramaTransportePage = () => {
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 {lastUpdatedLabel}
               </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Fecha informe PDF: {formatProgramDate(programData.date)}
+              </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} width={{ xs: '100%', sm: 'auto' }}>
+              <TextField
+                label="Fecha"
+                type="date"
+                value={programData.date}
+                onChange={(event) => handleProgramChange('date', event.target.value)}
+                size="small"
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: { xs: '100%', sm: 170 } }}
+              />
               <Button
                 variant="contained"
                 color="primary"
@@ -1033,14 +1067,6 @@ const ProgramaTransportePage = () => {
                 disabled={programData.rows.length === 0 || pdfStatus.state === 'loading'}
               >
                 Exportar PDF
-              </Button>
-              <Button
-                variant="text"
-                color="inherit"
-                startIcon={<RestartAltIcon />}
-                onClick={handleResetProgram}
-              >
-                Reiniciar
               </Button>
             </Stack>
           </Stack>
@@ -1067,114 +1093,6 @@ const ProgramaTransportePage = () => {
               {error}
             </Alert>
           )}
-        </Paper>
-
-        <Paper elevation={3} sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Datos generales
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Título"
-                value={programData.title}
-                onChange={(event) => handleProgramChange('title', event.target.value)}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <TextField
-                label="Fecha"
-                type="date"
-                value={programData.date}
-                onChange={(event) => handleProgramChange('date', event.target.value)}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <TextField
-                label="Nombre columna observaciones"
-                value={programData.observationLabel}
-                onChange={(event) => handleProgramChange('observationLabel', event.target.value)}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <TextField
-                select
-                label="Tamaño PDF"
-                value={programData.pdfPageSize}
-                onChange={(event) => handleProgramChange('pdfPageSize', event.target.value)}
-                helperText="Carta o Legal (oficio)"
-                fullWidth
-              >
-                <MenuItem value="letter">Carta (Letter)</MenuItem>
-                <MenuItem value="legal">Oficio / Legal</MenuItem>
-              </TextField>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Estados equipo (separar por coma)"
-                value={programData.equipmentStatusOptions.join(', ')}
-                onChange={(event) => handleStatusOptionsChange('equipmentStatusOptions', event.target.value)}
-                helperText="Ej: Operativo, En ruta, Panne"
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Estados conductor (separar por coma)"
-                value={programData.driverStatusOptions.join(', ')}
-                onChange={(event) => handleStatusOptionsChange('driverStatusOptions', event.target.value)}
-                helperText="Ej: Trabajando, Reemplazo, Licencia"
-                fullWidth
-              />
-            </Grid>
-          </Grid>
-        </Paper>
-
-        <Paper elevation={3} sx={{ p: 3 }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h6">Destinos configurables</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Cambia los encabezados para reflejar plantas o turnos. Puedes sumar o eliminar columnas cuando se necesite.
-              </Typography>
-            </Box>
-            <Stack direction="row" spacing={1}>
-              <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddColumn}>
-                Agregar columna
-              </Button>
-            </Stack>
-          </Stack>
-          <Grid container spacing={2} sx={{ mt: 2 }}>
-            {programData.destinationColumns.map((column) => (
-              <Grid item xs={12} md={6} lg={3} key={column.id}>
-                <TextField
-                  label="Nombre de columna"
-                  value={column.label}
-                  onChange={(event) => handleColumnLabelChange(column.id, event.target.value)}
-                  fullWidth
-                  InputProps={{
-                    endAdornment: (
-                      <Tooltip title="Eliminar columna">
-                        <span>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleRemoveColumn(column.id)}
-                            disabled={programData.destinationColumns.length === 1}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    )
-                  }}
-                />
-              </Grid>
-            ))}
-          </Grid>
         </Paper>
 
         <Paper elevation={3} sx={{ p: 3 }}>
@@ -1653,6 +1571,104 @@ const ProgramaTransportePage = () => {
               </TableBody>
             </Table>
           </TableContainer>
+        </Paper>
+
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Datos generales
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Título"
+                value={programData.title}
+                onChange={(event) => handleProgramChange('title', event.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField
+                label="Nombre columna observaciones"
+                value={programData.observationLabel}
+                onChange={(event) => handleProgramChange('observationLabel', event.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField
+                select
+                label="Tamaño PDF"
+                value={programData.pdfPageSize}
+                onChange={(event) => handleProgramChange('pdfPageSize', event.target.value)}
+                helperText="Carta o Legal (oficio)"
+                fullWidth
+              >
+                <MenuItem value="letter">Carta (Letter)</MenuItem>
+                <MenuItem value="legal">Oficio / Legal</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Estados equipo (separar por coma)"
+                value={programData.equipmentStatusOptions.join(', ')}
+                onChange={(event) => handleStatusOptionsChange('equipmentStatusOptions', event.target.value)}
+                helperText="Ej: Operativo, En ruta, Panne"
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Estados conductor (separar por coma)"
+                value={programData.driverStatusOptions.join(', ')}
+                onChange={(event) => handleStatusOptionsChange('driverStatusOptions', event.target.value)}
+                helperText="Ej: Trabajando, Reemplazo, Licencia"
+                fullWidth
+              />
+            </Grid>
+          </Grid>
+        </Paper>
+
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6">Destinos configurables</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Cambia los encabezados para reflejar plantas o turnos. Puedes sumar o eliminar columnas cuando se necesite.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddColumn}>
+                Agregar columna
+              </Button>
+            </Stack>
+          </Stack>
+          <Grid container spacing={2} sx={{ mt: 2 }}>
+            {programData.destinationColumns.map((column) => (
+              <Grid item xs={12} md={6} lg={3} key={column.id}>
+                <TextField
+                  label="Nombre de columna"
+                  value={column.label}
+                  onChange={(event) => handleColumnLabelChange(column.id, event.target.value)}
+                  fullWidth
+                  InputProps={{
+                    endAdornment: (
+                      <Tooltip title="Eliminar columna">
+                        <span>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRemoveColumn(column.id)}
+                            disabled={programData.destinationColumns.length === 1}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    )
+                  }}
+                />
+              </Grid>
+            ))}
+          </Grid>
         </Paper>
       </Stack>
       <Snackbar
