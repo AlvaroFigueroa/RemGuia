@@ -328,6 +328,13 @@ const normalizeProgram = (raw) => {
   };
 };
 
+const isNumericLike = (value) => {
+  if (typeof value !== 'string' && typeof value !== 'number') return false;
+  const normalized = value.toString().trim();
+  if (!normalized) return false;
+  return /^\d+(?:[\.,]\d+)?$/.test(normalized);
+};
+
 const syncRowsWithColumns = (rows, columns) => rows.map((row) => ({
   ...row,
   assignments: normalizeAssignments(row.assignments, columns)
@@ -457,7 +464,8 @@ const tableInputSx = {
     color: '#0f172a'
   },
   '& .MuiInputBase-input': {
-    py: 0.75
+    py: 0.75,
+    textAlign: 'center'
   },
   '& .MuiInput-underline:before': {
     borderColor: programaTableTheme.border
@@ -481,7 +489,18 @@ const plateComboInputSx = {
     color: '#0f172a'
   },
   '& .MuiInputBase-input': {
-    py: 0.75
+    py: 0.75,
+    textAlign: 'center'
+  },
+  '& .MuiSelect-select': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    paddingRight: '32px !important'
+  },
+  '& .MuiSelect-icon': {
+    right: 8
   },
   '& .MuiInput-underline:before': {
     borderBottom: 'none'
@@ -497,16 +516,57 @@ const plateComboInputSx = {
   }
 };
 
-const buildPdfColumnWidths = (destinationCount, pageSize = 'legal') => {
-  const fixedColumns = [50, 55, 30, 65, 85, 85, 85];
-  const observationWidth = 170;
+const buildPdfColumnWidths = (destinationColumns = [], pageSize = 'legal') => {
+  const fixedColumns = [40, 38, 26, 50, 78, 71, 50];
+  const observationWidth = 100;
   const usableWidth = pageSize?.toLowerCase?.() === 'letter' ? 820 : 920;
+
+  const columns = Array.isArray(destinationColumns) ? destinationColumns : [];
+  const normalizeLabel = (label) =>
+    (label || '')
+      .toString()
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, ' ');
+
+  const FIXED_COCHARCAS_WIDTH = 40;
+  const FIXED_EL_SAQUE_WIDTH = 40;
+  const FIXED_RIGHT_OF_SAQUE_WIDTH = 50;
+  const fixedDestWidths = new Map();
+  let elSaqueIndex = -1;
+
+  columns.forEach((col, index) => {
+    const upper = normalizeLabel(col?.label);
+    if (upper === 'PLANTA EL SAQUE') {
+      elSaqueIndex = index;
+    }
+    if (upper === 'PLANTA COCHARCAS') {
+      fixedDestWidths.set(index, FIXED_COCHARCAS_WIDTH);
+    }
+    if (upper === 'PLANTA EL SAQUE') {
+      fixedDestWidths.set(index, FIXED_EL_SAQUE_WIDTH);
+    }
+  });
+
+  if (elSaqueIndex >= 0) {
+    columns.forEach((_col, index) => {
+      if (index > elSaqueIndex) {
+        fixedDestWidths.set(index, FIXED_RIGHT_OF_SAQUE_WIDTH);
+      }
+    });
+  }
+
   const fixedWidthSum = fixedColumns.reduce((sum, width) => sum + width, 0) + observationWidth;
   const remaining = Math.max(usableWidth - fixedWidthSum, 60);
-  const destinationWidth = destinationCount > 0
-    ? Math.max(34, Math.floor(remaining / destinationCount))
-    : 0;
-  return [...fixedColumns, ...Array(destinationCount).fill(destinationWidth || 50), observationWidth];
+
+  const fixedDestTotal = Array.from(fixedDestWidths.values()).reduce((sum, width) => sum + width, 0);
+  const flexibleCount = Math.max(columns.length - fixedDestWidths.size, 0);
+  const flexibleRemaining = Math.max(remaining - fixedDestTotal, 0);
+
+  const flexibleWidth = flexibleCount > 0 ? Math.max(26, Math.floor(flexibleRemaining / flexibleCount)) : 0;
+
+  const destinationWidths = columns.map((_col, index) => (fixedDestWidths.has(index) ? fixedDestWidths.get(index) : (flexibleWidth || 50)));
+  return [...fixedColumns, ...destinationWidths, observationWidth];
 };
 
 const formatPdfHeaderLabel = (label = '') => {
@@ -516,6 +576,7 @@ const formatPdfHeaderLabel = (label = '') => {
   if (upper === 'SITUACIÓN CONDUCTOR') return 'SITUACIÓN\nCONDUCTOR';
   if (upper === 'LUGAR DE CARGA') return 'LUGAR DE\nCARGA';
   if (upper === 'TIPO EQUIPO') return 'TIPO\nEQUIPO';
+  if (upper === 'OBSERVACIONES') return 'OBSERVA\nCIONES';
   return upper;
 };
 
@@ -814,10 +875,18 @@ const ProgramaTransportePage = () => {
         programData.observationLabel
       ];
 
-      const pdfHeaderRow = headerRow.map((label) => ({
-        text: formatPdfHeaderLabel(label),
-        style: 'tableHeader'
-      }));
+      const pdfHeaderRow = headerRow.map((label) => {
+        const formatted = formatPdfHeaderLabel(label);
+        const rawUpper = label?.toString?.().trim?.().toUpperCase?.() || '';
+        const isSafi = rawUpper.startsWith('SAFI');
+        const isObservation = rawUpper === programData.observationLabel?.toString?.().trim?.().toUpperCase?.();
+        return {
+          text: formatted,
+          style: 'tableHeader',
+          margin: isSafi ? [0, -2, 0, 0] : [0, 25, 0, 0],
+          alignment: isObservation ? 'left' : 'center'
+        };
+      });
 
       const bodyRows = programData.rows.map((row) => {
         const destinationValues = programData.destinationColumns.map((column) => row.assignments[column.id] || '');
@@ -830,17 +899,21 @@ const ProgramaTransportePage = () => {
           buildPdfDriverStatusCell(row.driverStatus),
           { text: row.loadSite || '—', style: 'tableCell' },
           ...destinationValues.map((value) => ({ text: value, style: 'tableCell' })),
-          { text: row.observation || '', style: 'tableCell' }
+          {
+            text: row.observation || '',
+            style: 'tableCell',
+            alignment: 'left'
+          }
         ];
         return baseCells;
       });
 
-      const widths = buildPdfColumnWidths(programData.destinationColumns.length, programData.pdfPageSize);
+      const widths = buildPdfColumnWidths(programData.destinationColumns, programData.pdfPageSize);
 
       const docDefinition = {
         pageOrientation: 'landscape',
         pageSize: programData.pdfPageSize?.toUpperCase?.() === 'LETTER' ? 'LETTER' : 'LEGAL',
-        pageMargins: [20, 30, 20, 30],
+        pageMargins: [20, 30, 28, 30],
         content: [
           {
             text: `${programData.title?.toUpperCase?.() || programData.title} ${new Date(programData.date).toLocaleDateString('es-CL')}`,
@@ -857,8 +930,8 @@ const ProgramaTransportePage = () => {
                 if (rowIndex === 0) return '#0f1f3a';
                 return rowIndex % 2 === 0 ? '#ffffff' : '#f6f8fc';
               },
-              paddingTop: (rowIndex) => (rowIndex === 0 ? 7 : 4),
-              paddingBottom: (rowIndex) => (rowIndex === 0 ? 7 : 4),
+              paddingTop: (rowIndex) => (rowIndex === 0 ? 10 : 4),
+              paddingBottom: (rowIndex) => (rowIndex === 0 ? 10 : 4),
               paddingLeft: () => 4,
               paddingRight: () => 4,
               hLineWidth: () => 0.6,
@@ -886,6 +959,7 @@ const ProgramaTransportePage = () => {
           tableCell: {
             fontSize: 8,
             color: '#0f172a',
+            alignment: 'center',
             margin: [0, 3, 0, 3]
           }
         },
@@ -1143,26 +1217,44 @@ const ProgramaTransportePage = () => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Autocomplete
-                      freeSolo
-                      options={plateOptions}
-                      value={normalizePlate(focusedRow.plate) || ''}
-                      onChange={(_event, newValue) => handlePlateChange(focusedRow.id, newValue)}
-                      onInputChange={(_event, newInputValue) => {
-                        if (typeof newInputValue === 'string') {
-                          handlePlateChange(focusedRow.id, newInputValue);
+                    <TextField
+                      select
+                      label="Patente"
+                      value={normalizePlate(focusedRow.plate)}
+                      onChange={(event) => handlePlateChange(focusedRow.id, event.target.value)}
+                      fullWidth
+                      error={Boolean(plateErrors[focusedRow.id])}
+                      helperText={plateErrors[focusedRow.id] || ' '}
+                      InputProps={{ disableUnderline: true }}
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          backgroundColor: '#f1f5f9',
+                          borderRadius: 1.5,
+                          px: 1,
+                          py: 0.25,
+                          minHeight: 40,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: '#0f172a'
+                        },
+                        '& .MuiInputBase-input': {
+                          textAlign: 'center',
+                          textOverflow: 'unset'
+                        },
+                        '& .MuiSelect-icon': {
+                          color: '#334155'
                         }
                       }}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Patente"
-                          error={Boolean(plateErrors[focusedRow.id])}
-                          helperText={plateErrors[focusedRow.id] || ' '}
-                          fullWidth
-                        />
+                    >
+                      {!plateOptions.includes(normalizePlate(focusedRow.plate)) && normalizePlate(focusedRow.plate) && (
+                        <MenuItem value={normalizePlate(focusedRow.plate)}>{normalizePlate(focusedRow.plate)}</MenuItem>
                       )}
-                    />
+                      {plateOptions.map((plate) => (
+                        <MenuItem key={plate} value={plate}>
+                          {plate}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </Grid>
                   <Grid item xs={12} sm={6} md={2}>
                     <TextField
@@ -1170,6 +1262,7 @@ const ProgramaTransportePage = () => {
                       value={focusedRow.capacity}
                       onChange={(event) => handleRowFieldChange(focusedRow.id, 'capacity', event.target.value)}
                       fullWidth
+                      inputProps={{ style: { textAlign: isNumericLike(focusedRow.capacity) ? 'center' : 'left' } }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
@@ -1260,6 +1353,11 @@ const ProgramaTransportePage = () => {
                         value={focusedRow.assignments?.[column.id] || ''}
                         onChange={(event) => handleAssignmentChange(focusedRow.id, column.id, event.target.value)}
                         fullWidth
+                        inputProps={{
+                          style: {
+                            textAlign: isNumericLike(focusedRow.assignments?.[column.id] || '') ? 'center' : 'left'
+                          }
+                        }}
                       />
                     </Grid>
                   ))}
@@ -1380,38 +1478,36 @@ const ProgramaTransportePage = () => {
                       />
                     </TableCell>
                     <TableCell sx={tableBodyCellSx}>
-                      <Autocomplete
-                        freeSolo
-                        options={plateOptions}
-                        value={normalizePlate(row.plate) || ''}
-                        onChange={(_event, newValue) => handlePlateChange(row.id, newValue)}
-                        onInputChange={(_event, newInputValue) => {
-                          if (typeof newInputValue === 'string') {
-                            handlePlateChange(row.id, newInputValue);
+                      <TextField
+                        select
+                        value={normalizePlate(row.plate)}
+                        onChange={(event) => handlePlateChange(row.id, event.target.value)}
+                        variant="standard"
+                        fullWidth
+                        error={Boolean(plateErrors[row.id])}
+                        helperText={plateErrors[row.id] || ' '}
+                        InputProps={{ disableUnderline: true }}
+                        sx={{
+                          ...plateComboInputSx,
+                          '& .MuiInputBase-input': {
+                            ...plateComboInputSx['& .MuiInputBase-input'],
+                            textOverflow: 'unset'
+                          },
+                          '& .MuiFormHelperText-root': {
+                            mt: 0.5,
+                            color: plateErrors[row.id] ? '#b91c1c' : programaTableTheme.subtleText
                           }
                         }}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            variant="standard"
-                            placeholder="DKXC-59"
-                            fullWidth
-                            error={Boolean(plateErrors[row.id])}
-                            helperText={plateErrors[row.id] || ' '}
-                            InputProps={{
-                              ...params.InputProps,
-                              disableUnderline: true
-                            }}
-                            sx={{
-                              ...plateComboInputSx,
-                              '& .MuiFormHelperText-root': {
-                                mt: 0.5,
-                                color: plateErrors[row.id] ? '#b91c1c' : programaTableTheme.subtleText
-                              }
-                            }}
-                          />
+                      >
+                        {!plateOptions.includes(normalizePlate(row.plate)) && normalizePlate(row.plate) && (
+                          <MenuItem value={normalizePlate(row.plate)}>{normalizePlate(row.plate)}</MenuItem>
                         )}
-                      />
+                        {plateOptions.map((plate) => (
+                          <MenuItem key={plate} value={plate}>
+                            {plate}
+                          </MenuItem>
+                        ))}
+                      </TextField>
                     </TableCell>
                     <TableCell sx={tableBodyCellSx}>
                       <TextField
