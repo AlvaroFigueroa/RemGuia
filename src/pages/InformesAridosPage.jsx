@@ -1,4 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
+import basePdfMake from 'pdfmake/build/pdfmake';
+import pdfMakeFonts from 'pdfmake/build/vfs_fonts';
 import {
   Container,
   Box,
@@ -18,6 +20,34 @@ import {
   Alert,
   CircularProgress
 } from '@mui/material';
+
+let cachedPdfMake = null;
+
+const getPdfMakeInstance = async () => {
+  if (cachedPdfMake) return cachedPdfMake;
+  const pdfMake = basePdfMake;
+
+  let vfs =
+    pdfMakeFonts?.pdfMake?.vfs ||
+    pdfMakeFonts?.default?.pdfMake?.vfs ||
+    pdfMakeFonts?.default?.vfs ||
+    pdfMakeFonts?.vfs;
+
+  if (!vfs && pdfMakeFonts && typeof pdfMakeFonts === 'object') {
+    const candidateKeys = Object.keys(pdfMakeFonts);
+    if (candidateKeys.length && /^Roboto/.test(candidateKeys[0])) {
+      vfs = pdfMakeFonts;
+    }
+  }
+
+  if (!vfs) {
+    throw new Error('No se pudo cargar las fuentes de pdfMake.');
+  }
+
+  pdfMake.vfs = vfs;
+  cachedPdfMake = pdfMake;
+  return cachedPdfMake;
+};
 
 const InformesAridosPage = () => {
   const todayIso = useMemo(() => {
@@ -140,7 +170,7 @@ const InformesAridosPage = () => {
     return aggregates;
   }, [extractDestino, toNumber]);
 
-  const pickLastDestinosByMaxId = useCallback((records) => {
+  const pickLastDestinosByMaxId = useCallback((records, limit = 8) => {
     const destinoMeta = new Map();
     records.forEach((record) => {
       const destino = extractDestino(record);
@@ -154,7 +184,7 @@ const InformesAridosPage = () => {
     });
     return Array.from(destinoMeta.values())
       .sort((a, b) => b.maxId - a.maxId)
-      .slice(0, 9)
+      .slice(0, limit)
       .map((entry) => entry.destino);
   }, [extractDestino, extractIdTransporte]);
 
@@ -210,6 +240,27 @@ const InformesAridosPage = () => {
     const run = async () => {
       setIsLoading(true);
       try {
+        const now = new Date();
+        const nowLocal = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+        const endAll = nowLocal.toISOString().slice(0, 10);
+        const startAll = '2000-01-01';
+
+        const paramsAll = new URLSearchParams();
+        paramsAll.append('startDate', startAll);
+        paramsAll.append('endDate', endAll);
+
+        const responseAll = await fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${paramsAll.toString()}`);
+        if (!responseAll.ok) {
+          throw new Error('No se pudo obtener la información histórica desde SQL.');
+        }
+        const payloadAll = await responseAll.json();
+        if (!payloadAll?.success) {
+          throw new Error(payloadAll?.message || 'Respuesta inválida desde la API SQL (histórico).');
+        }
+        const allRecords = Array.isArray(payloadAll?.data) ? payloadAll.data : [];
+        const destinos = pickLastDestinosByMaxId(allRecords, 8);
+        const cumulativeAggregates = sumMaterials(allRecords, destinos);
+
         const params = new URLSearchParams();
         params.append('startDate', fromDate);
         params.append('endDate', toDate);
@@ -222,50 +273,12 @@ const InformesAridosPage = () => {
           throw new Error(payload?.message || 'Respuesta inválida desde la API SQL.');
         }
         const periodRecords = Array.isArray(payload?.data) ? payload.data : [];
-        const destinos = pickLastDestinosByMaxId(periodRecords);
         const periodAggregates = sumMaterials(periodRecords, destinos);
-
-        const now = new Date();
-        const nowLocal = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-        const endAll = nowLocal.toISOString().slice(0, 10);
-        const startAll = '2000-01-01';
-
-        const cumulativeFetches = await Promise.all(
-          destinos.map(async (destino) => {
-            try {
-              const paramsAll = new URLSearchParams();
-              paramsAll.append('startDate', startAll);
-              paramsAll.append('endDate', endAll);
-              paramsAll.append('destino', destino);
-
-              const responseAll = await fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${paramsAll.toString()}`);
-              if (!responseAll.ok) {
-                return { destino, aggregate: null };
-              }
-              const payloadAll = await responseAll.json();
-              if (!payloadAll?.success) {
-                return { destino, aggregate: null };
-              }
-              const allRecords = Array.isArray(payloadAll?.data) ? payloadAll.data : [];
-              const aggregates = sumMaterials(allRecords, [destino]);
-              return { destino, aggregate: aggregates.get(destino.toLowerCase()) };
-            } catch (innerError) {
-              console.error(innerError);
-              return { destino, aggregate: null };
-            }
-          })
-        );
-
-        const cumulativeMap = new Map(
-          cumulativeFetches
-            .filter((item) => item?.destino)
-            .map((item) => [item.destino.toLowerCase(), item.aggregate])
-        );
 
         const nextRows = destinos.map((destino) => {
           const key = destino.toLowerCase();
           const period = periodAggregates.get(key);
-          const cumulative = cumulativeMap.get(key);
+          const cumulative = cumulativeAggregates.get(key);
 
           const base15 = period?.base15 || 0;
           const baseArcilla = period?.baseArcilla || 0;
@@ -336,9 +349,84 @@ const InformesAridosPage = () => {
     URL.revokeObjectURL(url);
   }, [appliedRange.from, appliedRange.to, buildCsv, filteredRows, totals]);
 
-  const handleExportPdf = useCallback(() => {
-    setToast({ open: true, severity: 'info', message: 'Exportar a PDF se conectará en el siguiente paso.' });
-  }, []);
+  const handleExportPdf = useCallback(async () => {
+    try {
+      if (filteredRows.length === 0) {
+        setToast({ open: true, severity: 'info', message: 'No hay datos para exportar.' });
+        return;
+      }
+
+      const pdfMake = await getPdfMakeInstance();
+
+      const headerRow = columns.map((col) => ({
+        text: col.label,
+        bold: true,
+        fillColor: '#0f1f3a',
+        color: '#f8fafc',
+        alignment: col.align,
+        margin: [0, 6, 0, 6]
+      }));
+
+      const bodyRows = filteredRows.map((row) =>
+        columns.map((col) => ({
+          text: formatCellValue(row[col.key]),
+          alignment: col.align,
+          margin: [0, 4, 0, 4]
+        }))
+      );
+
+      const totalsRow = columns.map((col) => ({
+        text: formatCellValue(totals[col.key]),
+        alignment: col.align,
+        bold: true,
+        margin: [0, 5, 0, 5]
+      }));
+
+      const widths = columns.map((col) => (col.key === 'destino' ? 160 : 55));
+
+      const docDefinition = {
+        pageOrientation: 'landscape',
+        pageSize: 'LEGAL',
+        pageMargins: [20, 30, 20, 30],
+        content: [
+          {
+            text: `Informes Áridos (${appliedRange.from} a ${appliedRange.to})`,
+            alignment: 'center',
+            bold: true,
+            fontSize: 14,
+            margin: [0, 0, 0, 12]
+          },
+          {
+            table: {
+              headerRows: 1,
+              widths,
+              body: [headerRow, ...bodyRows, totalsRow]
+            },
+            layout: {
+              fillColor: (rowIndex) => {
+                if (rowIndex === 0) return '#0f1f3a';
+                return rowIndex % 2 === 0 ? '#ffffff' : '#f6f8fc';
+              },
+              hLineWidth: () => 0.6,
+              vLineWidth: () => 0.6,
+              hLineColor: () => '#cbd5f5',
+              vLineColor: () => '#cbd5f5'
+            }
+          }
+        ],
+        defaultStyle: {
+          fontSize: 8,
+          color: '#0f172a'
+        }
+      };
+
+      const filename = `Informes Aridos - ${appliedRange.from} a ${appliedRange.to}.pdf`;
+      pdfMake.createPdf(docDefinition).download(filename);
+    } catch (pdfError) {
+      console.error(pdfError);
+      setToast({ open: true, severity: 'error', message: pdfError?.message || 'No se pudo exportar el PDF.' });
+    }
+  }, [appliedRange.from, appliedRange.to, columns, filteredRows, formatCellValue, totals]);
 
   const handlePrint = useCallback(() => {
     window.print();
