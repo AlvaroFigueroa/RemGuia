@@ -86,7 +86,7 @@ const isoDate = (date) => {
 };
 const today = new Date();
 const INTERVAL_HIGHLIGHT_STORAGE_KEY = 'interval-highlight-presets-v1';
-const intervalHighlightDefault = { averageDistance: '', routeConditions: '' };
+const intervalHighlightDefault = { medianDistance: '', routeConditions: '' };
 
 const toComparableText = (value) => {
   if (typeof value === 'string') return value.trim().toLowerCase();
@@ -106,6 +106,16 @@ const normalizePdfText = (value) => {
     .replace(/[\u202f\u00a0\u2009]/g, ' ')
     .replace(/\u200e/g, '')
     .trim();
+};
+
+const computeMedian = (values = []) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
 };
 
 const matchesFilter = (value, filterValue) => {
@@ -1166,21 +1176,31 @@ const DashboardPage = () => {
     return totals;
   }, [conductorIntervals, maxIntervalColumns]);
 
-  const averageIntervalMinutes = useMemo(() => {
-    let totalMinutes = 0;
-    let intervalsCount = 0;
+  const { medianIntervalMinutes, percentageIntervalsWithinBand } = useMemo(() => {
+    const allIntervals = [];
 
     conductorIntervals.forEach((entry) => {
       entry.intervals.forEach((interval) => {
         if (interval?.closing) return;
         if (!Number.isFinite(interval?.minutes)) return;
-        totalMinutes += interval.minutes;
-        intervalsCount += 1;
+        allIntervals.push(interval.minutes);
       });
     });
 
-    if (!intervalsCount) return null;
-    return totalMinutes / intervalsCount;
+    const globalMedian = computeMedian(allIntervals);
+    if (globalMedian == null) {
+      return { medianIntervalMinutes: null, percentageIntervalsWithinBand: null };
+    }
+
+    const lowerBound = globalMedian - 20;
+    const upperBound = globalMedian + 20;
+    const withinBandCount = allIntervals.filter((value) => value >= lowerBound && value <= upperBound).length;
+    const percentage = allIntervals.length ? Math.round((withinBandCount / allIntervals.length) * 100) : null;
+
+    return {
+      medianIntervalMinutes: globalMedian,
+      percentageIntervalsWithinBand: percentage
+    };
   }, [conductorIntervals]);
 
   const handleExportIntervalPdf = useCallback(async () => {
@@ -1209,7 +1229,7 @@ const DashboardPage = () => {
             conductorDetails.push({ text: `Capacidad: ${entry.capacityLabel}`, style: 'conductorMeta' });
           }
           if (entry.totalsByType?.length) {
-            conductorDetails.push({ text: `Total transportado: ${summarizeTotalsByType(entry.totalsByType)}`, style: 'conductorMeta' });
+            conductorDetails.push({ text: `Total: ${summarizeTotalsByType(entry.totalsByType)}`, style: 'conductorMeta' });
           }
 
           const intervalCells = intervalColumns.map((_, idx) => {
@@ -1234,7 +1254,6 @@ const DashboardPage = () => {
             const fromTimeText = normalizePdfText(formatTimeOfDay(interval.fromDate));
             const toTimeText = normalizePdfText(formatTimeOfDay(interval.toDate));
             const dateOnlyText = normalizePdfText(formatReportDate(interval.toDate, { dateOnly: true }));
-
             return {
               style: 'intervalCell',
               stack: [
@@ -1259,7 +1278,7 @@ const DashboardPage = () => {
         tableBody.push([
           {
             stack: [
-              { text: 'Total transportado en el día', style: 'conductorName' },
+              { text: 'Total en el día', style: 'conductorName' },
               { text: `${formatQuantityValue(totalTransportedDay)} m³`, style: 'intervalTitle' }
             ],
             style: 'conductorCell'
@@ -1372,7 +1391,25 @@ const DashboardPage = () => {
               { stack: [{ text: 'Conductores analizados', style: 'cardLabel' }, { text: conductorIntervals.length || 0, style: 'cardValue' }], style: 'summaryCard' },
               { stack: [{ text: 'Volumen total (m³)', style: 'cardLabel' }, { text: formatQuantityValue(totalTransportedDay), style: 'cardValue' }], style: 'summaryCard' },
               { stack: [{ text: 'Columnas de vueltas', style: 'cardLabel' }, { text: intervalColumns.length, style: 'cardValue' }], style: 'summaryCard' },
-              { stack: [{ text: 'Promedio por vuelta', style: 'cardLabel' }, { text: averageIntervalMinutes != null ? formatIntervalValue(averageIntervalMinutes) : '—', style: 'cardValue' }], style: 'summaryCard' }
+              {
+                stack: [
+                  { text: 'Mediana por vuelta', style: 'cardLabel' },
+                  { text: medianIntervalMinutes != null ? formatIntervalValue(medianIntervalMinutes) : '—', style: 'cardValue' }
+                ],
+                style: 'summaryCard'
+              },
+              {
+                stack: [
+                  { text: 'Vueltas cercanas a la mediana', style: 'cardLabel' },
+                  {
+                    text: percentageIntervalsWithinBand != null
+                      ? `${percentageIntervalsWithinBand}%`
+                      : '—',
+                    style: 'cardValue'
+                  }
+                ],
+                style: 'summaryCard'
+              }
             ],
             columnGap: 12,
             margin: [0, 0, 0, 14]
@@ -1394,6 +1431,7 @@ const DashboardPage = () => {
           metaValue: { fontSize: 11, color: '#0F172A', bold: true },
           cardLabel: { fontSize: 9, color: '#6B7280', letterSpacing: 0.4 },
           cardValue: { fontSize: 16, bold: true, color: '#111827', margin: [0, 4, 0, 0] },
+          cardFootnote: { fontSize: 8.5, color: '#6B7280', margin: [0, 2, 0, 0] },
           summaryCard: {
             margin: [0, 0, 0, 0],
             border: [false, false, false, false],
@@ -2979,7 +3017,7 @@ const DashboardPage = () => {
                         )}
                         {entry.totalsByType?.length > 0 && (
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem' }}>
-                            Total transportado: {summarizeTotalsByType(entry.totalsByType)}
+                            Total: {summarizeTotalsByType(entry.totalsByType)}
                           </Typography>
                         )}
                       </TableCell>
@@ -3036,7 +3074,7 @@ const DashboardPage = () => {
                     <TableRow sx={{ backgroundColor: 'grey.100' }}>
                       <TableCell sx={{ px: 1.5 }}>
                         <Typography variant="subtitle2" fontWeight={600}>
-                          Total transportado en el día
+                          Total en el día
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {formatQuantityValue(totalTransportedDay)} m³
