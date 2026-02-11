@@ -13,6 +13,7 @@ const Navigation = () => {
     if (isAdmin) {
       return [
         { label: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+        { label: 'Programa', icon: <LocationOn />, path: '/programa' },
         { label: 'Usuarios', icon: <Users />, path: '/users' },
         { label: 'Configuración', icon: <Settings />, path: '/config' }
       ];

@@ -19,7 +19,9 @@ import {
   Divider,
   CircularProgress,
   Grid,
-  Alert
+  Alert,
+  MenuItem,
+  Snackbar
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -52,14 +54,218 @@ const getDefaultDestinationColumns = () => ([
   { id: createId('dest'), label: 'Puente Biobío' }
 ]);
 
+const seededProgramRows = [
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'DKDG-59',
+    capacity: '14',
+    equipmentStatus: 'Operativo',
+    driver: 'Aedo Cristian',
+    driverStatus: 'Trabajando',
+    loadSite: 'Vista Bella'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'CGZL-37',
+    capacity: '15',
+    equipmentStatus: 'Operativo',
+    driver: 'Bustos Roberto',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'Camabaja',
+    plate: 'CTYY-48',
+    capacity: '20',
+    equipmentStatus: 'Operativo',
+    driver: 'Carrasco Carlos',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'Aljibe',
+    plate: 'SRYR-96',
+    capacity: '—',
+    equipmentStatus: 'Operativo',
+    driver: 'Carvajal Rodrigo',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'FJGY-97',
+    capacity: '24',
+    equipmentStatus: 'Operativo',
+    driver: 'Flores Roberto',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'PRTZ-21',
+    capacity: '20',
+    equipmentStatus: 'Panne',
+    driver: 'Fonseca Antonio',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'FHVS-78',
+    capacity: '14',
+    equipmentStatus: 'Operativo',
+    driver: 'Gajardo Diego',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'HWGS-63',
+    capacity: '15',
+    equipmentStatus: 'Operativo',
+    driver: 'Godoy Oscar',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'KKPX-57',
+    capacity: '15',
+    equipmentStatus: 'Operativo',
+    driver: 'Guajardo Wenceslao',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'DXCG-25',
+    capacity: '15',
+    equipmentStatus: 'Operativo',
+    driver: 'Jeldres Juan',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'Camabaja',
+    plate: 'VDLP-96',
+    capacity: '—',
+    equipmentStatus: 'Operativo',
+    driver: 'Luengo Jaime',
+    driverStatus: 'Vacaciones',
+    loadSite: 'No aplica'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'HWGS-26',
+    capacity: '15',
+    equipmentStatus: 'Operativo',
+    driver: 'Montanares Jaime',
+    driverStatus: 'Trabajando',
+    loadSite: 'El Saque'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'PRTZ-24',
+    capacity: '20',
+    equipmentStatus: 'Operativo',
+    driver: 'Ocares Luis',
+    driverStatus: 'Trabajando',
+    loadSite: 'Vista Bella'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'TSJH-71',
+    capacity: '22',
+    equipmentStatus: 'Operativo',
+    driver: 'Retamal Jorge',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'Camabaja',
+    plate: 'DFGS-92',
+    capacity: '20',
+    equipmentStatus: 'Operativo',
+    driver: 'San Martín Yegosin',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'CGZL-38',
+    capacity: '15',
+    equipmentStatus: 'Operativo',
+    driver: 'Zapata Ariel',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'TSJH-72',
+    capacity: '22',
+    equipmentStatus: 'Operativo',
+    driver: 'Zurita Cristian',
+    driverStatus: 'Trabajando',
+    loadSite: 'Cocharcas'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'GDFS-82',
+    capacity: '15',
+    equipmentStatus: 'Panne',
+    driver: 'ZZ SCH',
+    driverStatus: 'No Aplica',
+    loadSite: 'No aplica'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'CGZL-40',
+    capacity: '15',
+    equipmentStatus: 'Panne',
+    driver: 'ZZ SCH',
+    driverStatus: 'No Aplica',
+    loadSite: 'No aplica'
+  },
+  {
+    equipmentType: 'Tracto c/camabaja',
+    plate: 'BHZJ-74',
+    capacity: '20',
+    equipmentStatus: 'Operativo',
+    driver: 'ZZ SCH',
+    driverStatus: 'No Aplica',
+    loadSite: 'No aplica'
+  },
+  {
+    equipmentType: 'C.Tolva',
+    plate: 'DXCG-26',
+    capacity: '15',
+    equipmentStatus: 'Operativo',
+    driver: 'ZZ SCH',
+    driverStatus: 'No Aplica',
+    loadSite: 'No aplica'
+  }
+];
+
 const defaultProgramTemplate = () => ({
   title: 'Distribución equipos de transporte',
   date: TODAY_ISO,
   destinationColumns: getDefaultDestinationColumns(),
   observationLabel: 'Observaciones',
+  pdfPageSize: 'legal',
   equipmentStatusOptions: ['Operativo', 'Stand by', 'En ruta', 'Panne', 'Revisión técnica', 'Fuera de servicio'],
   driverStatusOptions: ['Trabajando', 'Disponible', 'Descanso', 'Licencia', 'Traslado', 'Reemplazo'],
-  rows: [],
+  rows: seededProgramRows.map((row, index) => ({
+    id: createId(`row-${index + 1}`),
+    equipmentType: row.equipmentType,
+    plate: row.plate,
+    capacity: row.capacity,
+    equipmentStatus: row.equipmentStatus,
+    driver: row.driver,
+    driverStatus: row.driverStatus,
+    loadSite: row.loadSite,
+    assignments: {},
+    observation: row.observation || ''
+  })),
   updatedAt: null
 });
 
@@ -116,7 +322,8 @@ const normalizeProgram = (raw) => {
       ? ensureArray(raw.driverStatusOptions)
       : template.driverStatusOptions,
     destinationColumns,
-    rows: normalizeRows(raw.rows, destinationColumns)
+    rows: normalizeRows(raw.rows, destinationColumns),
+    pdfPageSize: raw.pdfPageSize || template.pdfPageSize
   };
 };
 
@@ -164,6 +371,66 @@ const statusPalette = {
   'Fuera de servicio': 'default'
 };
 
+const programaTableTheme = {
+  headerBg: '#0f1f3a',
+  headerText: '#f8fafc',
+  headerBorder: '#0a1730',
+  stripeLight: '#f6f8fc',
+  stripeDark: '#ffffff',
+  border: '#e2e8f0',
+  subtleText: '#64748b'
+};
+
+const tableHeaderCellSx = {
+  backgroundColor: programaTableTheme.headerBg,
+  color: programaTableTheme.headerText,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
+  fontSize: 12,
+  borderColor: programaTableTheme.headerBorder,
+  borderBottomWidth: 2,
+  textAlign: 'center',
+  verticalAlign: 'middle',
+  py: 1.5
+};
+
+const tableBodyCellSx = {
+  borderColor: programaTableTheme.border,
+  backgroundColor: 'transparent'
+};
+
+const tableInputSx = {
+  '& .MuiInputBase-root': {
+    fontSize: 13,
+    color: '#0f172a'
+  },
+  '& .MuiInputBase-input': {
+    py: 0.75
+  },
+  '& .MuiInput-underline:before': {
+    borderColor: programaTableTheme.border
+  },
+  '& .MuiInput-underline:hover:not(.Mui-disabled):before': {
+    borderColor: '#3b82f6'
+  },
+  '& .MuiInput-underline:after': {
+    borderColor: '#1d4ed8'
+  }
+};
+
+const buildPdfColumnWidths = (destinationCount) => {
+  const fixedColumns = [55, 62, 34, 70, 95, 78, 78];
+  const observationWidth = 150;
+  const usableWidth = 800;
+  const fixedWidthSum = fixedColumns.reduce((sum, width) => sum + width, 0) + observationWidth;
+  const remaining = Math.max(usableWidth - fixedWidthSum, 60);
+  const destinationWidth = destinationCount > 0
+    ? Math.max(34, Math.floor(remaining / destinationCount))
+    : 0;
+  return [...fixedColumns, ...Array(destinationCount).fill(destinationWidth || 50), observationWidth];
+};
+
 const ProgramaTransportePage = () => {
   const { getTransportProgram, saveTransportProgram } = useFirebase();
 
@@ -173,6 +440,7 @@ const ProgramaTransportePage = () => {
   const [error, setError] = useState('');
   const [savingStatus, setSavingStatus] = useState({ state: 'idle', message: '' });
   const [pdfStatus, setPdfStatus] = useState({ state: 'idle', message: '' });
+  const [toast, setToast] = useState({ open: false, severity: 'success', message: '' });
 
   useEffect(() => {
     let isMounted = true;
@@ -367,9 +635,11 @@ const ProgramaTransportePage = () => {
       await saveTransportProgram(payload);
       setSavingStatus({ state: 'success', message: 'Programa guardado correctamente.' });
       setUnsavedChanges(false);
+      setToast({ open: true, severity: 'success', message: 'Programa guardado con éxito.' });
     } catch (saveError) {
       console.error(saveError);
       setSavingStatus({ state: 'error', message: saveError?.message || 'No se pudo guardar el programa.' });
+      setToast({ open: true, severity: 'error', message: saveError?.message || 'No se pudo guardar el programa.' });
     }
   }, [programData, saveTransportProgram]);
 
@@ -389,22 +659,31 @@ const ProgramaTransportePage = () => {
         programData.observationLabel
       ];
 
-      const bodyRows = programData.rows.map((row) => ([
-        row.equipmentType || '—',
-        row.plate || '—',
-        row.capacity || '—',
-        row.equipmentStatus || '—',
-        row.driver || '—',
-        row.driverStatus || '—',
-        row.loadSite || '—',
-        ...programData.destinationColumns.map((column) => row.assignments[column.id] || ''),
-        row.observation || ''
-      ]));
+      const pdfHeaderRow = headerRow.map((label) => ({
+        text: label.toUpperCase(),
+        style: 'tableHeader'
+      }));
 
-      const widths = [80, 70, 40, 80, 90, 80, 90, ...programData.destinationColumns.map(() => 60), 150];
+      const bodyRows = programData.rows.map((row) => {
+        const values = [
+          row.equipmentType || '—',
+          row.plate || '—',
+          row.capacity || '—',
+          row.equipmentStatus || '—',
+          row.driver || '—',
+          row.driverStatus || '—',
+          row.loadSite || '—',
+          ...programData.destinationColumns.map((column) => row.assignments[column.id] || ''),
+          row.observation || ''
+        ];
+        return values.map((value) => ({ text: value, style: 'tableCell' }));
+      });
+
+      const widths = buildPdfColumnWidths(programData.destinationColumns.length);
 
       const docDefinition = {
         pageOrientation: 'landscape',
+        pageSize: programData.pdfPageSize?.toUpperCase?.() === 'LETTER' ? 'LETTER' : 'LEGAL',
         pageMargins: [20, 30, 20, 30],
         content: [
           {
@@ -415,14 +694,17 @@ const ProgramaTransportePage = () => {
             table: {
               headerRows: 1,
               widths,
-              body: [headerRow, ...bodyRows]
+              body: [pdfHeaderRow, ...bodyRows]
             },
             layout: {
-              fillColor: (rowIndex) => (rowIndex === 0 ? '#f5f5f5' : rowIndex % 2 === 0 ? '#fafafa' : null),
-              hLineWidth: () => 0.7,
-              vLineWidth: () => 0.7,
-              hLineColor: () => '#bdbdbd',
-              vLineColor: () => '#bdbdbd'
+              fillColor: (rowIndex) => {
+                if (rowIndex === 0) return '#0f1f3a';
+                return rowIndex % 2 === 0 ? '#ffffff' : '#f6f8fc';
+              },
+              hLineWidth: () => 0.6,
+              vLineWidth: () => 0.6,
+              hLineColor: () => '#cbd5f5',
+              vLineColor: () => '#cbd5f5'
             }
           }
         ],
@@ -432,10 +714,23 @@ const ProgramaTransportePage = () => {
             bold: true,
             alignment: 'center',
             margin: [0, 0, 0, 10]
+          },
+          tableHeader: {
+            bold: true,
+            color: '#f8fafc',
+            fontSize: 9,
+            alignment: 'center',
+            margin: [0, 4, 0, 4]
+          },
+          tableCell: {
+            fontSize: 8,
+            color: '#0f172a',
+            margin: [0, 3, 0, 3]
           }
         },
         defaultStyle: {
-          fontSize: 9
+          fontSize: 8,
+          color: '#0f172a'
         }
       };
 
@@ -455,6 +750,11 @@ const ProgramaTransportePage = () => {
     if (!date) return 'Aún no guardado';
     return `Última actualización: ${date.toLocaleString('es-CL')}`;
   }, [programData.updatedAt]);
+
+  const handleToastClose = useCallback((event, reason) => {
+    if (reason === 'clickaway') return;
+    setToast((prev) => ({ ...prev, open: false }));
+  }, []);
 
   if (loading) {
     return (
@@ -565,6 +865,19 @@ const ProgramaTransportePage = () => {
                 fullWidth
               />
             </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField
+                select
+                label="Tamaño PDF"
+                value={programData.pdfPageSize}
+                onChange={(event) => handleProgramChange('pdfPageSize', event.target.value)}
+                helperText="Carta o Legal (oficio)"
+                fullWidth
+              >
+                <MenuItem value="letter">Carta (Letter)</MenuItem>
+                <MenuItem value="legal">Oficio / Legal</MenuItem>
+              </TextField>
+            </Grid>
             <Grid item xs={12} md={6}>
               <TextField
                 label="Estados equipo (separar por coma)"
@@ -629,7 +942,17 @@ const ProgramaTransportePage = () => {
           </Grid>
         </Paper>
 
-        <Paper elevation={3} sx={{ p: 0 }}>
+        <Paper
+          elevation={4}
+          sx={{
+            p: 0,
+            overflow: 'hidden',
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: programaTableTheme.border,
+            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)'
+          }}
+        >
           <Box sx={{ p: 3, borderBottom: '1px solid', borderColor: 'divider' }}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
               <Box sx={{ flex: 1 }}>
@@ -643,22 +966,30 @@ const ProgramaTransportePage = () => {
               </Button>
             </Stack>
           </Box>
-          <TableContainer sx={{ maxHeight: '65vh' }}>
+          <TableContainer
+            sx={{
+              maxHeight: { xs: 'unset', md: '65vh' },
+              borderTop: '1px solid',
+              borderColor: programaTableTheme.border
+            }}
+          >
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ minWidth: 140 }}>Tipo equipo</TableCell>
-                  <TableCell sx={{ minWidth: 120 }}>Patente</TableCell>
-                  <TableCell sx={{ minWidth: 80 }}>Cap.</TableCell>
-                  <TableCell sx={{ minWidth: 150 }}>Situación equipo</TableCell>
-                  <TableCell sx={{ minWidth: 150 }}>Conductor</TableCell>
-                  <TableCell sx={{ minWidth: 160 }}>Situación conductor</TableCell>
-                  <TableCell sx={{ minWidth: 150 }}>Lugar de carga</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 140 }}>Tipo equipo</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 120 }}>Patente</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 80 }}>Cap.</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 150 }}>Situación equipo</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 150 }}>Conductor</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 160 }}>Situación conductor</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 150 }}>Lugar de carga</TableCell>
                   {programData.destinationColumns.map((column) => (
-                    <TableCell key={column.id} sx={{ minWidth: 130 }}>{column.label}</TableCell>
+                    <TableCell key={column.id} align="center" sx={{ ...tableHeaderCellSx, minWidth: 130 }}>
+                      {column.label}
+                    </TableCell>
                   ))}
-                  <TableCell sx={{ minWidth: 200 }}>{programData.observationLabel}</TableCell>
-                  <TableCell align="center" sx={{ minWidth: 80 }}>Acciones</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 200 }}>{programData.observationLabel}</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 80 }}>Acciones</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -671,42 +1002,53 @@ const ProgramaTransportePage = () => {
                     </TableCell>
                   </TableRow>
                 )}
-                {programData.rows.map((row) => (
-                  <TableRow key={row.id} hover>
-                    <TableCell>
+                {programData.rows.map((row, rowIndex) => (
+                  <TableRow
+                    key={row.id}
+                    hover
+                    sx={{
+                      backgroundColor: rowIndex % 2 === 0 ? programaTableTheme.stripeDark : programaTableTheme.stripeLight,
+                      '&:last-of-type td': { borderBottomWidth: 0 }
+                    }}
+                  >
+                    <TableCell sx={tableBodyCellSx}>
                       <TextField
                         value={row.equipmentType}
                         onChange={(event) => handleRowFieldChange(row.id, 'equipmentType', event.target.value)}
                         variant="standard"
                         placeholder="C.Tolva, camabaja…"
                         fullWidth
+                        sx={tableInputSx}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={tableBodyCellSx}>
                       <TextField
                         value={row.plate}
                         onChange={(event) => handleRowFieldChange(row.id, 'plate', event.target.value)}
                         variant="standard"
                         placeholder="DKXC-59"
                         fullWidth
+                        sx={tableInputSx}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={tableBodyCellSx}>
                       <TextField
                         value={row.capacity}
                         onChange={(event) => handleRowFieldChange(row.id, 'capacity', event.target.value)}
                         variant="standard"
                         placeholder="15"
                         fullWidth
+                        sx={tableInputSx}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={tableBodyCellSx}>
                       <TextField
                         value={row.equipmentStatus}
                         onChange={(event) => handleRowFieldChange(row.id, 'equipmentStatus', event.target.value)}
                         variant="standard"
                         placeholder="Operativo"
                         fullWidth
+                        sx={tableInputSx}
                       />
                       <Box sx={{ mt: 1 }}>
                         <Chip
@@ -716,45 +1058,49 @@ const ProgramaTransportePage = () => {
                         />
                       </Box>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={tableBodyCellSx}>
                       <TextField
                         value={row.driver}
                         onChange={(event) => handleRowFieldChange(row.id, 'driver', event.target.value)}
                         variant="standard"
                         placeholder="Nombre conductor"
                         fullWidth
+                        sx={tableInputSx}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={tableBodyCellSx}>
                       <TextField
                         value={row.driverStatus}
                         onChange={(event) => handleRowFieldChange(row.id, 'driverStatus', event.target.value)}
                         variant="standard"
                         placeholder="Trabajando"
                         fullWidth
+                        sx={tableInputSx}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={tableBodyCellSx}>
                       <TextField
                         value={row.loadSite}
                         onChange={(event) => handleRowFieldChange(row.id, 'loadSite', event.target.value)}
                         variant="standard"
                         placeholder="Cochacaras"
                         fullWidth
+                        sx={tableInputSx}
                       />
                     </TableCell>
                     {programData.destinationColumns.map((column) => (
-                      <TableCell key={`${row.id}-${column.id}`}>
+                      <TableCell key={`${row.id}-${column.id}`} sx={tableBodyCellSx}>
                         <TextField
                           value={row.assignments[column.id] || ''}
                           onChange={(event) => handleAssignmentChange(row.id, column.id, event.target.value)}
                           variant="standard"
                           placeholder="Ej: 14"
                           fullWidth
+                          sx={tableInputSx}
                         />
                       </TableCell>
                     ))}
-                    <TableCell>
+                    <TableCell sx={tableBodyCellSx}>
                       <TextField
                         value={row.observation}
                         onChange={(event) => handleRowFieldChange(row.id, 'observation', event.target.value)}
@@ -763,9 +1109,10 @@ const ProgramaTransportePage = () => {
                         fullWidth
                         multiline
                         minRows={1}
+                        sx={tableInputSx}
                       />
                     </TableCell>
-                    <TableCell align="center">
+                    <TableCell align="center" sx={{ ...tableBodyCellSx, minWidth: 96 }}>
                       <Stack direction="row" spacing={1} justifyContent="center">
                         <Tooltip title="Duplicar fila">
                           <IconButton size="small" onClick={() => handleDuplicateRow(row.id)}>
@@ -786,6 +1133,16 @@ const ProgramaTransportePage = () => {
           </TableContainer>
         </Paper>
       </Stack>
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={4000}
+        onClose={handleToastClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleToastClose} severity={toast.severity} variant="filled" sx={{ width: '100%' }}>
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

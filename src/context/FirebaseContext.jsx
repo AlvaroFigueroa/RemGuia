@@ -25,6 +25,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Crear el contexto
 const FirebaseContext = createContext();
+const TRANSPORT_PROGRAM_COLLECTION = 'transportProgram';
+const TRANSPORT_PROGRAM_DOC_ID = 'current';
 
 // Hook personalizado para usar el contexto
 export const useFirebase = () => useContext(FirebaseContext);
@@ -79,6 +81,35 @@ export const FirebaseProvider = ({ children }) => {
 
     fetchProfile();
   }, [currentUser]);
+
+  const getTransportProgram = useCallback(async () => {
+    try {
+      const docRef = doc(db, TRANSPORT_PROGRAM_COLLECTION, TRANSPORT_PROGRAM_DOC_ID);
+      const snapshot = await getDoc(docRef);
+      if (!snapshot.exists()) {
+        return null;
+      }
+      return { id: snapshot.id, ...snapshot.data() };
+    } catch (error) {
+      console.error('Error al obtener el programa de transporte:', error);
+      throw error;
+    }
+  }, []);
+
+  const saveTransportProgram = useCallback(async (program = {}) => {
+    try {
+      const docRef = doc(db, TRANSPORT_PROGRAM_COLLECTION, TRANSPORT_PROGRAM_DOC_ID);
+      const payload = {
+        ...program,
+        updatedAt: serverTimestamp()
+      };
+      await setDoc(docRef, payload, { merge: true });
+      return payload;
+    } catch (error) {
+      console.error('Error al guardar el programa de transporte:', error);
+      throw error;
+    }
+  }, []);
 
   // Funciones de autenticación
   const login = (email, password) => {
@@ -720,6 +751,8 @@ export const FirebaseProvider = ({ children }) => {
     getRouteHighlight,
     saveRouteHighlight,
     deleteRouteHighlight,
+    getTransportProgram,
+    saveTransportProgram,
     loading,
     profileLoading
   };

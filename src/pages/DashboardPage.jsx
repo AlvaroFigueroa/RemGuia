@@ -981,11 +981,12 @@ const DashboardPage = () => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
-  const filterByRange = useCallback((guides, range) => {
+  const filterByRange = useCallback((guides, range = {}) => {
+    const ignoreDateRange = Boolean(range.ignoreDateRange);
     return guides.filter((guide) => {
       if (!guide.guideNumber) return false;
       const guideDate = parseDateValue(guide.date);
-      if (!guideDate) return true;
+      if (ignoreDateRange || !guideDate) return true;
       const start = range.startDate ? new Date(range.startDate) : null;
       const end = range.endDate ? new Date(range.endDate) : null;
       if (start && guideDate < new Date(`${range.startDate}T00:00:00`)) return false;
@@ -1602,18 +1603,19 @@ const DashboardPage = () => {
   const handleQuickFetch = useCallback(async () => {
     setQuickStatus({ state: 'loading', message: '' });
     try {
+      const trimmedGuideNumber = quickFilters.guideNumber.trim().toLowerCase();
       const range = {
         startDate: quickFilters.startDate,
         endDate: quickFilters.endDate,
         ubicacion: 'Todos',
         destino: 'Todos',
-        subDestino: 'Todos'
+        subDestino: 'Todos',
+        ignoreDateRange: Boolean(trimmedGuideNumber)
       };
 
       const data = await fetchDestinoGuides(range);
-      const trimmed = quickFilters.guideNumber.trim().toLowerCase();
-      const filtered = trimmed
-        ? data.filter((guide) => guide.guideNumber?.toLowerCase().includes(trimmed))
+      const filtered = trimmedGuideNumber
+        ? data.filter((guide) => guide.guideNumber?.toLowerCase().includes(trimmedGuideNumber))
         : data;
 
       setQuickGuides(filtered);
