@@ -21,7 +21,8 @@ import {
   Grid,
   Alert,
   MenuItem,
-  Snackbar
+  Snackbar,
+  Autocomplete
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -253,7 +254,7 @@ const defaultProgramTemplate = () => ({
   observationLabel: 'Observaciones',
   pdfPageSize: 'legal',
   equipmentStatusOptions: ['Operativo', 'Stand by', 'En ruta', 'Panne', 'Revisión técnica', 'Fuera de servicio'],
-  driverStatusOptions: ['Trabajando', 'Disponible', 'Descanso', 'Licencia', 'Traslado', 'Reemplazo'],
+  driverStatusOptions: ['Trabajando', 'Vacaciones', 'Licencia', 'Permiso'],
   rows: seededProgramRows.map((row, index) => ({
     id: createId(`row-${index + 1}`),
     equipmentType: row.equipmentType,
@@ -371,6 +372,50 @@ const statusPalette = {
   'Fuera de servicio': 'default'
 };
 
+const statusColorTokens = {
+  Operativo: { bg: '#dcfce7', fg: '#166534' },
+  'En ruta': { bg: '#dbeafe', fg: '#1e40af' },
+  'Stand by': { bg: '#fef9c3', fg: '#854d0e' },
+  'Revisión técnica': { bg: '#ede9fe', fg: '#5b21b6' },
+  Panne: { bg: '#fee2e2', fg: '#991b1b' },
+  'Fuera de servicio': { bg: '#e2e8f0', fg: '#334155' }
+};
+
+const driverStatusColorTokens = {
+  Trabajando: { bg: '#dcfce7', fg: '#166534' },
+  Vacaciones: { bg: '#e0f2fe', fg: '#075985' },
+  Licencia: { bg: '#fef9c3', fg: '#854d0e' },
+  Permiso: { bg: '#ede9fe', fg: '#5b21b6' }
+};
+
+const getStatusColors = (status = '') => statusColorTokens[status] || { bg: '#f1f5f9', fg: '#0f172a' };
+
+const getDriverStatusColors = (status = '') => driverStatusColorTokens[status] || { bg: '#f1f5f9', fg: '#0f172a' };
+
+const buildPdfStatusCell = (statusText) => {
+  const colors = getStatusColors(statusText);
+  return {
+    text: statusText || '—',
+    style: 'tableCell',
+    bold: true,
+    alignment: 'center',
+    fillColor: colors.bg,
+    color: colors.fg
+  };
+};
+
+const buildPdfDriverStatusCell = (statusText) => {
+  const colors = getDriverStatusColors(statusText);
+  return {
+    text: statusText || '—',
+    style: 'tableCell',
+    bold: true,
+    alignment: 'center',
+    fillColor: colors.bg,
+    color: colors.fg
+  };
+};
+
 const programaTableTheme = {
   headerBg: '#0f1f3a',
   headerText: '#f8fafc',
@@ -392,7 +437,13 @@ const tableHeaderCellSx = {
   borderBottomWidth: 2,
   textAlign: 'center',
   verticalAlign: 'middle',
-  py: 1.5
+  py: 1.25,
+  lineHeight: 1.15,
+  whiteSpace: 'normal',
+  wordBreak: 'normal',
+  overflowWrap: 'normal',
+  height: 72,
+  px: 1
 };
 
 const tableBodyCellSx = {
@@ -419,16 +470,53 @@ const tableInputSx = {
   }
 };
 
-const buildPdfColumnWidths = (destinationCount) => {
-  const fixedColumns = [55, 62, 34, 70, 95, 78, 78];
-  const observationWidth = 150;
-  const usableWidth = 800;
+const plateComboInputSx = {
+  '& .MuiInputBase-root': {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 1.5,
+    px: 1,
+    py: 0.25,
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#0f172a'
+  },
+  '& .MuiInputBase-input': {
+    py: 0.75
+  },
+  '& .MuiInput-underline:before': {
+    borderBottom: 'none'
+  },
+  '& .MuiInput-underline:hover:not(.Mui-disabled):before': {
+    borderBottom: 'none'
+  },
+  '& .MuiInput-underline:after': {
+    borderBottom: 'none'
+  },
+  '& .MuiAutocomplete-endAdornment .MuiSvgIcon-root': {
+    color: '#334155'
+  }
+};
+
+const buildPdfColumnWidths = (destinationCount, pageSize = 'legal') => {
+  const fixedColumns = [50, 55, 30, 65, 85, 85, 85];
+  const observationWidth = 170;
+  const usableWidth = pageSize?.toLowerCase?.() === 'letter' ? 820 : 920;
   const fixedWidthSum = fixedColumns.reduce((sum, width) => sum + width, 0) + observationWidth;
   const remaining = Math.max(usableWidth - fixedWidthSum, 60);
   const destinationWidth = destinationCount > 0
     ? Math.max(34, Math.floor(remaining / destinationCount))
     : 0;
   return [...fixedColumns, ...Array(destinationCount).fill(destinationWidth || 50), observationWidth];
+};
+
+const formatPdfHeaderLabel = (label = '') => {
+  const trimmed = label.toString().trim();
+  const upper = trimmed.toUpperCase();
+  if (upper === 'SITUACIÓN EQUIPO') return 'SITUACIÓN\nEQUIPO';
+  if (upper === 'SITUACIÓN CONDUCTOR') return 'SITUACIÓN\nCONDUCTOR';
+  if (upper === 'LUGAR DE CARGA') return 'LUGAR DE\nCARGA';
+  if (upper === 'TIPO EQUIPO') return 'TIPO\nEQUIPO';
+  return upper;
 };
 
 const ProgramaTransportePage = () => {
@@ -441,6 +529,8 @@ const ProgramaTransportePage = () => {
   const [savingStatus, setSavingStatus] = useState({ state: 'idle', message: '' });
   const [pdfStatus, setPdfStatus] = useState({ state: 'idle', message: '' });
   const [toast, setToast] = useState({ open: false, severity: 'success', message: '' });
+  const [plateErrors, setPlateErrors] = useState({});
+  const [focusedRowId, setFocusedRowId] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -578,6 +668,71 @@ const ProgramaTransportePage = () => {
     setUnsavedChanges(true);
   }, []);
 
+  const normalizePlate = useCallback((plate) => (typeof plate === 'string' ? plate.trim().toUpperCase() : ''), []);
+
+  const plateOptions = useMemo(() => {
+    const normalized = programData.rows
+      .map((row) => normalizePlate(row.plate))
+      .filter(Boolean);
+    return Array.from(new Set(normalized)).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [normalizePlate, programData.rows]);
+
+  const driverRowOptions = useMemo(() => {
+    const options = programData.rows
+      .map((row) => {
+        const driverLabel = (row.driver || '').trim();
+        if (!driverLabel) return null;
+        const plateLabel = normalizePlate(row.plate);
+        const label = plateLabel ? `${driverLabel} (${plateLabel})` : driverLabel;
+        return { id: row.id, driver: driverLabel, plate: plateLabel, label };
+      })
+      .filter(Boolean);
+
+    const deduped = new Map();
+    options.forEach((opt) => {
+      const key = `${opt.driver}__${opt.plate || opt.id}`;
+      if (!deduped.has(key)) deduped.set(key, opt);
+    });
+    return Array.from(deduped.values()).sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }, [normalizePlate, programData.rows]);
+
+  const focusedRow = useMemo(() => {
+    if (!focusedRowId) return null;
+    return programData.rows.find((row) => row.id === focusedRowId) || null;
+  }, [focusedRowId, programData.rows]);
+
+  const handlePlateChange = useCallback((rowId, nextPlateRaw) => {
+    const nextPlate = normalizePlate(nextPlateRaw);
+    if (!nextPlate) {
+      setPlateErrors((prev) => {
+        const clone = { ...prev };
+        delete clone[rowId];
+        return clone;
+      });
+      handleRowFieldChange(rowId, 'plate', '');
+      return;
+    }
+
+    const conflict = programData.rows.find((row) => row.id !== rowId && normalizePlate(row.plate) === nextPlate);
+    if (conflict) {
+      const conflictDriver = (conflict.driver || '').trim();
+      setPlateErrors((prev) => ({ ...prev, [rowId]: `Asignada a ${conflictDriver || 'otro conductor'}` }));
+      setToast({
+        open: true,
+        severity: 'error',
+        message: `La patente ${nextPlate} ya está asignada a ${conflictDriver || 'otro conductor'}.`
+      });
+      return;
+    }
+
+    setPlateErrors((prev) => {
+      const clone = { ...prev };
+      delete clone[rowId];
+      return clone;
+    });
+    handleRowFieldChange(rowId, 'plate', nextPlate);
+  }, [handleRowFieldChange, normalizePlate, programData.rows]);
+
   const handleAssignmentChange = useCallback((rowId, columnId, value) => {
     setProgramData((prev) => ({
       ...prev,
@@ -660,26 +815,27 @@ const ProgramaTransportePage = () => {
       ];
 
       const pdfHeaderRow = headerRow.map((label) => ({
-        text: label.toUpperCase(),
+        text: formatPdfHeaderLabel(label),
         style: 'tableHeader'
       }));
 
       const bodyRows = programData.rows.map((row) => {
-        const values = [
-          row.equipmentType || '—',
-          row.plate || '—',
-          row.capacity || '—',
-          row.equipmentStatus || '—',
-          row.driver || '—',
-          row.driverStatus || '—',
-          row.loadSite || '—',
-          ...programData.destinationColumns.map((column) => row.assignments[column.id] || ''),
-          row.observation || ''
+        const destinationValues = programData.destinationColumns.map((column) => row.assignments[column.id] || '');
+        const baseCells = [
+          { text: row.equipmentType || '—', style: 'tableCell' },
+          { text: row.plate || '—', style: 'tableCell' },
+          { text: row.capacity || '—', style: 'tableCell' },
+          buildPdfStatusCell(row.equipmentStatus),
+          { text: row.driver || '—', style: 'tableCell' },
+          buildPdfDriverStatusCell(row.driverStatus),
+          { text: row.loadSite || '—', style: 'tableCell' },
+          ...destinationValues.map((value) => ({ text: value, style: 'tableCell' })),
+          { text: row.observation || '', style: 'tableCell' }
         ];
-        return values.map((value) => ({ text: value, style: 'tableCell' }));
+        return baseCells;
       });
 
-      const widths = buildPdfColumnWidths(programData.destinationColumns.length);
+      const widths = buildPdfColumnWidths(programData.destinationColumns.length, programData.pdfPageSize);
 
       const docDefinition = {
         pageOrientation: 'landscape',
@@ -701,6 +857,10 @@ const ProgramaTransportePage = () => {
                 if (rowIndex === 0) return '#0f1f3a';
                 return rowIndex % 2 === 0 ? '#ffffff' : '#f6f8fc';
               },
+              paddingTop: (rowIndex) => (rowIndex === 0 ? 7 : 4),
+              paddingBottom: (rowIndex) => (rowIndex === 0 ? 7 : 4),
+              paddingLeft: () => 4,
+              paddingRight: () => 4,
               hLineWidth: () => 0.6,
               vLineWidth: () => 0.6,
               hLineColor: () => '#cbd5f5',
@@ -720,7 +880,8 @@ const ProgramaTransportePage = () => {
             color: '#f8fafc',
             fontSize: 9,
             alignment: 'center',
-            margin: [0, 4, 0, 4]
+            lineHeight: 1.1,
+            margin: [0, 0, 0, 0]
           },
           tableCell: {
             fontSize: 8,
@@ -942,6 +1103,183 @@ const ProgramaTransportePage = () => {
           </Grid>
         </Paper>
 
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Box>
+              <Typography variant="h6">Edición rápida por conductor</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Selecciona un conductor para editar únicamente su fila. Los cambios se aplican automáticamente a la tabla general.
+              </Typography>
+            </Box>
+            <Autocomplete
+              options={driverRowOptions}
+              value={driverRowOptions.find((opt) => opt.id === focusedRowId) || null}
+              onChange={(_event, newValue) => setFocusedRowId(newValue?.id || '')}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Conductor"
+                  placeholder="Selecciona un conductor"
+                  fullWidth
+                />
+              )}
+            />
+
+            {!focusedRow && (
+              <Alert severity="info">
+                Selecciona un conductor para ver su fila y editarla.
+              </Alert>
+            )}
+
+            {focusedRow && (
+              <Box sx={{ border: '1px solid', borderColor: programaTableTheme.border, borderRadius: 2, p: 2, backgroundColor: '#ffffff' }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      label="Tipo equipo"
+                      value={focusedRow.equipmentType}
+                      onChange={(event) => handleRowFieldChange(focusedRow.id, 'equipmentType', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Autocomplete
+                      freeSolo
+                      options={plateOptions}
+                      value={normalizePlate(focusedRow.plate) || ''}
+                      onChange={(_event, newValue) => handlePlateChange(focusedRow.id, newValue)}
+                      onInputChange={(_event, newInputValue) => {
+                        if (typeof newInputValue === 'string') {
+                          handlePlateChange(focusedRow.id, newInputValue);
+                        }
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Patente"
+                          error={Boolean(plateErrors[focusedRow.id])}
+                          helperText={plateErrors[focusedRow.id] || ' '}
+                          fullWidth
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={2}>
+                    <TextField
+                      label="Capacidad"
+                      value={focusedRow.capacity}
+                      onChange={(event) => handleRowFieldChange(focusedRow.id, 'capacity', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      select
+                      label="Situación equipo"
+                      value={focusedRow.equipmentStatus}
+                      onChange={(event) => handleRowFieldChange(focusedRow.id, 'equipmentStatus', event.target.value)}
+                      fullWidth
+                      InputProps={{ disableUnderline: true }}
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          backgroundColor: getStatusColors(focusedRow.equipmentStatus).bg,
+                          borderRadius: 1.5,
+                          px: 1,
+                          py: 0.25,
+                          minHeight: 40,
+                          color: getStatusColors(focusedRow.equipmentStatus).fg,
+                          fontWeight: 700
+                        },
+                        '& .MuiSelect-icon': {
+                          color: getStatusColors(focusedRow.equipmentStatus).fg
+                        }
+                      }}
+                    >
+                      {programData.equipmentStatusOptions.map((statusOption) => (
+                        <MenuItem key={statusOption} value={statusOption}>
+                          {statusOption}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      label="Conductor"
+                      value={focusedRow.driver}
+                      onChange={(event) => handleRowFieldChange(focusedRow.id, 'driver', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      select
+                      label="Situación conductor"
+                      value={focusedRow.driverStatus}
+                      onChange={(event) => handleRowFieldChange(focusedRow.id, 'driverStatus', event.target.value)}
+                      fullWidth
+                      InputProps={{ disableUnderline: true }}
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          backgroundColor: getDriverStatusColors(focusedRow.driverStatus).bg,
+                          borderRadius: 1.5,
+                          px: 1,
+                          py: 0.25,
+                          minHeight: 40,
+                          color: getDriverStatusColors(focusedRow.driverStatus).fg,
+                          fontWeight: 700
+                        },
+                        '& .MuiSelect-icon': {
+                          color: getDriverStatusColors(focusedRow.driverStatus).fg
+                        }
+                      }}
+                    >
+                      {!programData.driverStatusOptions.includes(focusedRow.driverStatus) && focusedRow.driverStatus && (
+                        <MenuItem value={focusedRow.driverStatus}>{focusedRow.driverStatus}</MenuItem>
+                      )}
+                      {programData.driverStatusOptions.map((statusOption) => (
+                        <MenuItem key={statusOption} value={statusOption}>
+                          {statusOption}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      label="Lugar de carga"
+                      value={focusedRow.loadSite}
+                      onChange={(event) => handleRowFieldChange(focusedRow.id, 'loadSite', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+
+                  {programData.destinationColumns.map((column) => (
+                    <Grid item xs={12} sm={6} md={3} key={`${focusedRow.id}-focused-${column.id}`}>
+                      <TextField
+                        label={column.label}
+                        value={focusedRow.assignments?.[column.id] || ''}
+                        onChange={(event) => handleAssignmentChange(focusedRow.id, column.id, event.target.value)}
+                        fullWidth
+                      />
+                    </Grid>
+                  ))}
+
+                  <Grid item xs={12}>
+                    <TextField
+                      label={programData.observationLabel}
+                      value={focusedRow.observation}
+                      onChange={(event) => handleRowFieldChange(focusedRow.id, 'observation', event.target.value)}
+                      fullWidth
+                      multiline
+                      minRows={2}
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
+          </Stack>
+        </Paper>
+
         <Paper
           elevation={4}
           sx={{
@@ -961,9 +1299,29 @@ const ProgramaTransportePage = () => {
                   Agrega filas por camión. Puedes duplicar para ahorrar tiempo, mover conductores entre vehículos y registrar observaciones.
                 </Typography>
               </Box>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddRow}>
-                Nueva fila
-              </Button>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="flex-end">
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<SaveIcon />}
+                  onClick={handleSaveProgram}
+                  disabled={savingStatus.state === 'loading' || !unsavedChanges}
+                >
+                  Guardar
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={handleExportPdf}
+                  disabled={programData.rows.length === 0 || pdfStatus.state === 'loading'}
+                >
+                  PDF
+                </Button>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddRow}>
+                  Nueva fila
+                </Button>
+              </Stack>
             </Stack>
           </Box>
           <TableContainer
@@ -976,19 +1334,19 @@ const ProgramaTransportePage = () => {
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 140 }}>Tipo equipo</TableCell>
-                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 120 }}>Patente</TableCell>
-                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 80 }}>Cap.</TableCell>
-                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 150 }}>Situación equipo</TableCell>
-                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 150 }}>Conductor</TableCell>
-                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 160 }}>Situación conductor</TableCell>
-                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 150 }}>Lugar de carga</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 110 }}>Tipo equipo</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 105 }}>Patente</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 60 }}>Cap.</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 130 }}>Situación equipo</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 140 }}>Conductor</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 140 }}>Situación conductor</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 140 }}>Lugar de carga</TableCell>
                   {programData.destinationColumns.map((column) => (
-                    <TableCell key={column.id} align="center" sx={{ ...tableHeaderCellSx, minWidth: 130 }}>
+                    <TableCell key={column.id} align="center" sx={{ ...tableHeaderCellSx, minWidth: 120 }}>
                       {column.label}
                     </TableCell>
                   ))}
-                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 200 }}>{programData.observationLabel}</TableCell>
+                  <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 220 }}>{programData.observationLabel}</TableCell>
                   <TableCell align="center" sx={{ ...tableHeaderCellSx, minWidth: 80 }}>Acciones</TableCell>
                 </TableRow>
               </TableHead>
@@ -1022,13 +1380,37 @@ const ProgramaTransportePage = () => {
                       />
                     </TableCell>
                     <TableCell sx={tableBodyCellSx}>
-                      <TextField
-                        value={row.plate}
-                        onChange={(event) => handleRowFieldChange(row.id, 'plate', event.target.value)}
-                        variant="standard"
-                        placeholder="DKXC-59"
-                        fullWidth
-                        sx={tableInputSx}
+                      <Autocomplete
+                        freeSolo
+                        options={plateOptions}
+                        value={normalizePlate(row.plate) || ''}
+                        onChange={(_event, newValue) => handlePlateChange(row.id, newValue)}
+                        onInputChange={(_event, newInputValue) => {
+                          if (typeof newInputValue === 'string') {
+                            handlePlateChange(row.id, newInputValue);
+                          }
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            variant="standard"
+                            placeholder="DKXC-59"
+                            fullWidth
+                            error={Boolean(plateErrors[row.id])}
+                            helperText={plateErrors[row.id] || ' '}
+                            InputProps={{
+                              ...params.InputProps,
+                              disableUnderline: true
+                            }}
+                            sx={{
+                              ...plateComboInputSx,
+                              '& .MuiFormHelperText-root': {
+                                mt: 0.5,
+                                color: plateErrors[row.id] ? '#b91c1c' : programaTableTheme.subtleText
+                              }
+                            }}
+                          />
+                        )}
                       />
                     </TableCell>
                     <TableCell sx={tableBodyCellSx}>
@@ -1043,20 +1425,37 @@ const ProgramaTransportePage = () => {
                     </TableCell>
                     <TableCell sx={tableBodyCellSx}>
                       <TextField
+                        select
                         value={row.equipmentStatus}
                         onChange={(event) => handleRowFieldChange(row.id, 'equipmentStatus', event.target.value)}
                         variant="standard"
-                        placeholder="Operativo"
                         fullWidth
-                        sx={tableInputSx}
-                      />
-                      <Box sx={{ mt: 1 }}>
-                        <Chip
-                          label={row.equipmentStatus || 'Sin estado'}
-                          color={statusPalette[row.equipmentStatus] || 'default'}
-                          size="small"
-                        />
-                      </Box>
+                        InputProps={{
+                          disableUnderline: true
+                        }}
+                        sx={{
+                          ...tableInputSx,
+                          '& .MuiInputBase-root': {
+                            ...tableInputSx['& .MuiInputBase-root'],
+                            backgroundColor: getStatusColors(row.equipmentStatus).bg,
+                            borderRadius: 1.5,
+                            px: 1,
+                            py: 0.25,
+                            minHeight: 36,
+                            color: getStatusColors(row.equipmentStatus).fg,
+                            fontWeight: 700
+                          },
+                          '& .MuiSelect-icon': {
+                            color: getStatusColors(row.equipmentStatus).fg
+                          }
+                        }}
+                      >
+                        {programData.equipmentStatusOptions.map((statusOption) => (
+                          <MenuItem key={statusOption} value={statusOption}>
+                            {statusOption}
+                          </MenuItem>
+                        ))}
+                      </TextField>
                     </TableCell>
                     <TableCell sx={tableBodyCellSx}>
                       <TextField
@@ -1070,13 +1469,40 @@ const ProgramaTransportePage = () => {
                     </TableCell>
                     <TableCell sx={tableBodyCellSx}>
                       <TextField
+                        select
                         value={row.driverStatus}
                         onChange={(event) => handleRowFieldChange(row.id, 'driverStatus', event.target.value)}
                         variant="standard"
-                        placeholder="Trabajando"
                         fullWidth
-                        sx={tableInputSx}
-                      />
+                        InputProps={{
+                          disableUnderline: true
+                        }}
+                        sx={{
+                          ...tableInputSx,
+                          '& .MuiInputBase-root': {
+                            ...tableInputSx['& .MuiInputBase-root'],
+                            backgroundColor: getDriverStatusColors(row.driverStatus).bg,
+                            borderRadius: 1.5,
+                            px: 1,
+                            py: 0.25,
+                            minHeight: 36,
+                            color: getDriverStatusColors(row.driverStatus).fg,
+                            fontWeight: 700
+                          },
+                          '& .MuiSelect-icon': {
+                            color: getDriverStatusColors(row.driverStatus).fg
+                          }
+                        }}
+                      >
+                        {!programData.driverStatusOptions.includes(row.driverStatus) && row.driverStatus && (
+                          <MenuItem value={row.driverStatus}>{row.driverStatus}</MenuItem>
+                        )}
+                        {programData.driverStatusOptions.map((statusOption) => (
+                          <MenuItem key={statusOption} value={statusOption}>
+                            {statusOption}
+                          </MenuItem>
+                        ))}
+                      </TextField>
                     </TableCell>
                     <TableCell sx={tableBodyCellSx}>
                       <TextField
