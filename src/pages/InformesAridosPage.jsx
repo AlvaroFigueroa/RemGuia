@@ -9,6 +9,7 @@ import {
   Stack,
   TextField,
   Button,
+  LinearProgress,
   Table,
   TableBody,
   TableCell,
@@ -69,6 +70,10 @@ const InformesAridosPage = () => {
   const [plantaPage, setPlantaPage] = useState(0);
   const [plantaRowsPerPage, setPlantaRowsPerPage] = useState(10);
 
+  const [avancesSearch, setAvancesSearch] = useState('');
+  const [avancesPage, setAvancesPage] = useState(0);
+  const [avancesRowsPerPage, setAvancesRowsPerPage] = useState(10);
+
   const columns = useMemo(
     () => [
       { key: 'destino', label: 'Destino', align: 'left', minWidth: 220 },
@@ -89,6 +94,109 @@ const InformesAridosPage = () => {
     ],
     []
   );
+
+  const avancesColumns = useMemo(
+    () => [
+      { key: 'obra', label: 'OBRA', align: 'left', minWidth: 160 },
+      { key: 'subdestino', label: 'Subdestino', align: 'left', minWidth: 180 },
+      { key: 'requerimientos', label: 'Requerimientos Obra', align: 'right', minWidth: 180 },
+      { key: 'transportado', label: 'Transportado', align: 'right', minWidth: 140 },
+      { key: 'saldo', label: 'Saldo', align: 'center', minWidth: 120 },
+      { key: 'avance', label: 'Porcentaje de Avance', align: 'left', minWidth: 220 }
+    ],
+    []
+  );
+
+  const avancesRows = useMemo(
+    () => [
+      {
+        obra: 'SAFI 413884',
+        subdestino: 'RN613 Bulnes',
+        requerimientos: 7990,
+        transportado: 8108
+      },
+      {
+        obra: 'SAFI 413884',
+        subdestino: 'RN828 Quillon',
+        requerimientos: 16470,
+        transportado: 16316
+      },
+      {
+        obra: 'SAFI 417998',
+        subdestino: 'RN310 San Nicolas',
+        requerimientos: 34535,
+        transportado: 5247
+      },
+      {
+        obra: 'SAFI 417998',
+        subdestino: 'RN296 Ninhue',
+        requerimientos: 7050,
+        transportado: 0
+      }
+    ].map((row) => {
+      const saldo = Number(row.requerimientos || 0) - Number(row.transportado || 0);
+      const avance = row.requerimientos ? (Number(row.transportado || 0) / Number(row.requerimientos || 0)) * 100 : 0;
+      return {
+        ...row,
+        saldo,
+        avance
+      };
+    }),
+    []
+  );
+
+  const filteredAvancesRows = useMemo(() => {
+    const needle = avancesSearch.trim().toLowerCase();
+    if (!needle) return avancesRows;
+    return avancesRows.filter((row) => {
+      return (
+        (row.obra || '').toLowerCase().includes(needle) ||
+        (row.subdestino || '').toLowerCase().includes(needle)
+      );
+    });
+  }, [avancesRows, avancesSearch]);
+
+  const pagedAvancesRows = useMemo(() => {
+    const start = avancesPage * avancesRowsPerPage;
+    return filteredAvancesRows.slice(start, start + avancesRowsPerPage);
+  }, [avancesPage, avancesRowsPerPage, filteredAvancesRows]);
+
+  const handleAvancesChangePage = useCallback((_event, newPage) => {
+    setAvancesPage(newPage);
+  }, []);
+
+  const handleAvancesChangeRowsPerPage = useCallback((event) => {
+    const next = Number(event.target.value);
+    setAvancesRowsPerPage(Number.isFinite(next) ? next : 10);
+    setAvancesPage(0);
+  }, []);
+
+  const handleAvancesExportExcel = useCallback(() => {
+    const header = avancesColumns.map((col) => col.label);
+    const line = (row) =>
+      avancesColumns
+        .map((col) => {
+          const raw = row[col.key];
+          const value = typeof raw === 'number' ? raw.toString() : (raw || '').toString();
+          const escaped = value.replaceAll('"', '""');
+          return `"${escaped}"`;
+        })
+        .join(',');
+    const csv = [header.map((h) => `"${h.replaceAll('"', '""')}"`).join(','), ...filteredAvancesRows.map(line)].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Avances en obra - ${appliedRange.from} a ${appliedRange.to}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [appliedRange.from, appliedRange.to, avancesColumns, filteredAvancesRows]);
+
+  const handleAvancesExportPdf = useCallback(() => {
+    setToast({ open: true, severity: 'info', message: 'PDF de Avances en obra se conectará cuando definamos la consulta.' });
+  }, []);
 
   const transporteApiBaseUrl = useMemo(() => {
     const envBase = (import.meta.env.VITE_TRANSPORTE_API || '').trim();
@@ -781,6 +889,189 @@ const InformesAridosPage = () => {
               onPageChange={handlePlantaChangePage}
               rowsPerPage={plantaRowsPerPage}
               onRowsPerPageChange={handlePlantaChangeRowsPerPage}
+              rowsPerPageOptions={[5, 10, 25]}
+              labelRowsPerPage="Filas"
+              labelDisplayedRows={({ from, to, count }) => `Mostrando ${from} a ${to} de ${count} entradas`}
+            />
+          </Stack>
+        </Paper>
+
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between">
+              <Box>
+                <Typography variant="h6" fontWeight={700}>
+                  Avances en obra
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Visualización referencial. Se conectará a SQL en el siguiente paso.
+                </Typography>
+              </Box>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Button variant="outlined" size="small" onClick={handleAvancesExportExcel}>Excel</Button>
+                  <Button variant="outlined" size="small" onClick={handleAvancesExportPdf}>PDF</Button>
+                  <Button variant="outlined" size="small" onClick={handlePrint}>Print</Button>
+                </Stack>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                    Buscar:
+                  </Typography>
+                  <TextField
+                    value={avancesSearch}
+                    onChange={(event) => {
+                      setAvancesSearch(event.target.value);
+                      setAvancesPage(0);
+                    }}
+                    size="small"
+                    placeholder="Obra o Subdestino"
+                  />
+                </Box>
+              </Stack>
+            </Stack>
+
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {avancesColumns.map((col) => (
+                      <TableCell
+                        key={col.key}
+                        align={col.align}
+                        sx={{ fontWeight: 700, backgroundColor: '#f8fafc', minWidth: col.minWidth }}
+                      >
+                        {col.label}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+
+                <TableBody>
+                  {pagedAvancesRows.map((row) => {
+                    const saldo = Number(row.saldo || 0);
+                    const avanceRaw = Math.max(0, Math.min(999, Number(row.avance || 0)));
+                    const avanceBase = Math.max(0, Math.min(100, avanceRaw));
+                    const avanceExceso = Math.max(0, avanceRaw - 100);
+                    const excesoWidth = Math.max(0, Math.min(100, avanceExceso));
+                    const isOver = avanceExceso > 0;
+                    const saldoAbs = Math.abs(saldo);
+                    const saldoLabel = saldo > 0 ? 'Falta' : saldo < 0 ? 'Exceso' : 'OK';
+                    const saldoColor = saldo > 0 ? 'warning.main' : saldo < 0 ? 'error.main' : 'success.main';
+                    const saldoBg = saldo > 0
+                      ? 'rgba(245,124,0,0.12)'
+                      : saldo < 0
+                        ? 'rgba(211,47,47,0.12)'
+                        : 'rgba(46,125,50,0.12)';
+
+                    return (
+                      <TableRow key={`${row.obra}-${row.subdestino}`} hover>
+                        <TableCell align="left">{row.obra}</TableCell>
+                        <TableCell align="left">{row.subdestino}</TableCell>
+                        <TableCell align="right">{formatCellValue(Number(row.requerimientos || 0))}</TableCell>
+                        <TableCell align="right">{formatCellValue(Number(row.transportado || 0))}</TableCell>
+                        <TableCell align="center">
+                          <Box
+                            sx={{
+                              display: 'inline-flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              px: 1.25,
+                              py: 0.6,
+                              borderRadius: 2,
+                              backgroundColor: saldoBg,
+                              border: '1px solid rgba(0,0,0,0.08)',
+                              minWidth: 92
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ fontWeight: 900, lineHeight: 1, color: saldoColor }}>
+                              {saldoLabel}
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 800, lineHeight: 1.1, color: 'text.primary' }}>
+                              {formatCellValue(saldoAbs)}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell align="left" sx={{ minWidth: 220 }}>
+                          <Stack direction="row" spacing={1.5} alignItems="center">
+                            <Box sx={{ flex: 1 }}>
+                              <Box
+                                sx={{
+                                  position: 'relative',
+                                  height: 8,
+                                  borderRadius: 6,
+                                  overflow: 'hidden',
+                                  backgroundColor: 'rgba(25,118,210,0.12)'
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: `${avanceBase}%`,
+                                    backgroundColor: 'primary.main'
+                                  }}
+                                />
+                                {isOver && (
+                                  <Box
+                                    sx={{
+                                      position: 'absolute',
+                                      right: 0,
+                                      top: 0,
+                                      bottom: 0,
+                                      width: `${excesoWidth}%`,
+                                      backgroundColor: 'error.main'
+                                    }}
+                                  />
+                                )}
+                              </Box>
+                            </Box>
+                            <Typography
+                              variant="body2"
+                              sx={{ fontWeight: 800, minWidth: 80, textAlign: 'right', color: isOver ? 'error.main' : 'primary.main' }}
+                            >
+                              {decimalFormatter.format(avanceRaw)}%
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+
+                  {pagedAvancesRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={avancesColumns.length} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                        No hay datos para mostrar.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+
+                <TableFooter>
+                  <TableRow>
+                    {avancesColumns.map((col) => (
+                      <TableCell
+                        key={`avances-footer-${col.key}`}
+                        align={col.align}
+                        sx={{ fontWeight: 700, backgroundColor: '#f8fafc', borderTop: '1px solid rgba(224, 224, 224, 1)' }}
+                      >
+                        {col.label}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </TableContainer>
+
+            <TablePagination
+              component="div"
+              count={filteredAvancesRows.length}
+              page={avancesPage}
+              onPageChange={handleAvancesChangePage}
+              rowsPerPage={avancesRowsPerPage}
+              onRowsPerPageChange={handleAvancesChangeRowsPerPage}
               rowsPerPageOptions={[5, 10, 25]}
               labelRowsPerPage="Filas"
               labelDisplayedRows={({ from, to, count }) => `Mostrando ${from} a ${to} de ${count} entradas`}
