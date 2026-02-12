@@ -18,7 +18,8 @@ import {
   TableFooter,
   Snackbar,
   Alert,
-  CircularProgress
+  CircularProgress,
+  TablePagination
 } from '@mui/material';
 
 let cachedPdfMake = null;
@@ -63,6 +64,10 @@ const InformesAridosPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState({ open: false, severity: 'info', message: '' });
   const [rows, setRows] = useState([]);
+  const [plantaRows, setPlantaRows] = useState([]);
+  const [plantaSearch, setPlantaSearch] = useState('');
+  const [plantaPage, setPlantaPage] = useState(0);
+  const [plantaRowsPerPage, setPlantaRowsPerPage] = useState(10);
 
   const columns = useMemo(
     () => [
@@ -198,12 +203,88 @@ const InformesAridosPage = () => {
     maximumFractionDigits: 0
   }), []);
 
-  const formatCellValue = useCallback((value) => {
+  const decimalFormatter = useMemo(() => new Intl.NumberFormat('es-CL', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }), []);
+
+  const formatCellValue = useCallback((value, options = {}) => {
+    const { decimals = null } = options;
     if (typeof value === 'number') {
+      if (decimals === 2) return decimalFormatter.format(value);
       return numberFormatter.format(value);
     }
     return value || '';
-  }, [numberFormatter]);
+  }, [decimalFormatter, numberFormatter]);
+
+  const plantaColumns = useMemo(
+    () => [
+      { key: 'planta', label: 'Planta', align: 'left', minWidth: 220 },
+      { key: 'base15', label: 'Base 1.5', align: 'center' },
+      { key: 'base15Acum', label: 'Acum.', align: 'center' },
+      { key: 'stock', label: 'Stock', align: 'center' },
+      { key: 'm3hHistorico', label: 'M3/H Historico', align: 'center' }
+    ],
+    []
+  );
+
+  const filteredPlantaRows = useMemo(() => {
+    const needle = plantaSearch.trim().toLowerCase();
+    if (!needle) return plantaRows;
+    return plantaRows.filter((row) => (row.planta || '').toLowerCase().includes(needle));
+  }, [plantaRows, plantaSearch]);
+
+  const pagedPlantaRows = useMemo(() => {
+    const start = plantaPage * plantaRowsPerPage;
+    return filteredPlantaRows.slice(start, start + plantaRowsPerPage);
+  }, [filteredPlantaRows, plantaPage, plantaRowsPerPage]);
+
+  const plantaTotals = useMemo(() => {
+    const total = { planta: 'Total', base15: 0, base15Acum: 0, stock: 0, m3hHistorico: 0 };
+    filteredPlantaRows.forEach((row) => {
+      total.base15 += Number(row.base15 || 0);
+      total.base15Acum += Number(row.base15Acum || 0);
+      total.stock += Number(row.stock || 0);
+    });
+    return total;
+  }, [filteredPlantaRows]);
+
+  const handlePlantaChangePage = useCallback((_event, newPage) => {
+    setPlantaPage(newPage);
+  }, []);
+
+  const handlePlantaChangeRowsPerPage = useCallback((event) => {
+    const next = Number(event.target.value);
+    setPlantaRowsPerPage(Number.isFinite(next) ? next : 10);
+    setPlantaPage(0);
+  }, []);
+
+  const handlePlantaExportExcel = useCallback(() => {
+    const header = plantaColumns.map((col) => col.label);
+    const line = (row) =>
+      plantaColumns
+        .map((col) => {
+          const raw = row[col.key];
+          const value = typeof raw === 'number' ? raw.toString() : (raw || '').toString();
+          const escaped = value.replaceAll('"', '""');
+          return `"${escaped}"`;
+        })
+        .join(',');
+    const csv = [header.map((h) => `"${h.replaceAll('"', '""')}"`).join(','), ...filteredPlantaRows.map(line), line(plantaTotals)].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Planta - ${appliedRange.from} a ${appliedRange.to}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [appliedRange.from, appliedRange.to, filteredPlantaRows, plantaColumns, plantaTotals]);
+
+  const handlePlantaExportPdf = useCallback(() => {
+    setToast({ open: true, severity: 'info', message: 'PDF de Planta se conectará cuando definamos la consulta.' });
+  }, []);
 
   const totals = useMemo(() => {
     const base = {
@@ -249,11 +330,33 @@ const InformesAridosPage = () => {
         paramsAll.append('startDate', startAll);
         paramsAll.append('endDate', endAll);
 
-        const responseAll = await fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${paramsAll.toString()}`);
-        if (!responseAll.ok) {
+        const responseAllPromise = fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${paramsAll.toString()}`);
+
+        const params = new URLSearchParams();
+        params.append('startDate', fromDate);
+        params.append('endDate', toDate);
+        const responsePeriodPromise = fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${params.toString()}`);
+
+        const paramsPlanta = new URLSearchParams();
+        paramsPlanta.append('startDate', fromDate);
+        paramsPlanta.append('endDate', toDate);
+        const responsePlantaPromise = fetch(`${transporteApiBaseUrl}/planta_by_date.php?${paramsPlanta.toString()}`);
+
+        const [allResult, periodResult, plantaResult] = await Promise.allSettled([
+          responseAllPromise,
+          responsePeriodPromise,
+          responsePlantaPromise
+        ]);
+
+        if (allResult.status !== 'fulfilled' || !allResult.value.ok) {
           throw new Error('No se pudo obtener la información histórica desde SQL.');
         }
-        const payloadAll = await responseAll.json();
+
+        if (periodResult.status !== 'fulfilled' || !periodResult.value.ok) {
+          throw new Error('No se pudo consultar la información en SQL.');
+        }
+
+        const payloadAll = await allResult.value.json();
         if (!payloadAll?.success) {
           throw new Error(payloadAll?.message || 'Respuesta inválida desde la API SQL (histórico).');
         }
@@ -261,19 +364,31 @@ const InformesAridosPage = () => {
         const destinos = pickLastDestinosByMaxId(allRecords, 8);
         const cumulativeAggregates = sumMaterials(allRecords, destinos);
 
-        const params = new URLSearchParams();
-        params.append('startDate', fromDate);
-        params.append('endDate', toDate);
-        const response = await fetch(`${transporteApiBaseUrl}/transporte_by_date.php?${params.toString()}`);
-        if (!response.ok) {
-          throw new Error('No se pudo consultar la información en SQL.');
-        }
-        const payload = await response.json();
+        const payload = await periodResult.value.json();
         if (!payload?.success) {
           throw new Error(payload?.message || 'Respuesta inválida desde la API SQL.');
         }
         const periodRecords = Array.isArray(payload?.data) ? payload.data : [];
         const periodAggregates = sumMaterials(periodRecords, destinos);
+
+        let plantaFailed = false;
+        if (plantaResult.status === 'fulfilled' && plantaResult.value.ok) {
+          const payloadPlanta = await plantaResult.value.json();
+          if (payloadPlanta?.success) {
+            const plantaData = Array.isArray(payloadPlanta?.data) ? payloadPlanta.data : [];
+            const allowedPlantas = new Set(
+              ['Cocharcas', 'Vista Bella', 'Movil Cocharcas', 'El Saque'].map((name) => name.toLowerCase())
+            );
+            const filtered = plantaData.filter((row) => allowedPlantas.has((row?.planta || '').toString().trim().toLowerCase()));
+            setPlantaRows(filtered);
+          } else {
+            plantaFailed = true;
+            setPlantaRows([]);
+          }
+        } else {
+          plantaFailed = true;
+          setPlantaRows([]);
+        }
 
         const nextRows = destinos.map((destino) => {
           const key = destino.toLowerCase();
@@ -309,10 +424,17 @@ const InformesAridosPage = () => {
 
         setRows(nextRows);
         setAppliedRange({ from: fromDate, to: toDate });
-        setToast({ open: true, severity: 'success', message: `Consulta lista. Mostrando ${nextRows.length} destinos.` });
+        setToast({
+          open: true,
+          severity: plantaFailed ? 'warning' : 'success',
+          message: plantaFailed
+            ? `Consulta lista. Destinos OK (${nextRows.length}). Planta no se pudo cargar (API/CORS).`
+            : `Consulta lista. Mostrando ${nextRows.length} destinos.`
+        });
       } catch (queryError) {
         console.error(queryError);
         setRows([]);
+        setPlantaRows([]);
         setToast({ open: true, severity: 'error', message: queryError?.message || 'No se pudo consultar la información.' });
       } finally {
         setIsLoading(false);
@@ -566,6 +688,103 @@ const InformesAridosPage = () => {
             <Typography variant="caption" color="text.secondary">
               Rango aplicado: {appliedRange.from} a {appliedRange.to}
             </Typography>
+          </Stack>
+        </Paper>
+
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between">
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button variant="outlined" size="small" onClick={handlePlantaExportExcel}>Excel</Button>
+                <Button variant="outlined" size="small" onClick={handlePlantaExportPdf}>PDF</Button>
+                <Button variant="outlined" size="small" onClick={handlePrint}>Print</Button>
+              </Stack>
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                  Buscar:
+                </Typography>
+                <TextField
+                  value={plantaSearch}
+                  onChange={(event) => {
+                    setPlantaSearch(event.target.value);
+                    setPlantaPage(0);
+                  }}
+                  size="small"
+                  placeholder="Planta"
+                />
+              </Box>
+            </Stack>
+
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {plantaColumns.map((col) => (
+                      <TableCell
+                        key={col.key}
+                        align={col.align}
+                        sx={{ fontWeight: 700, backgroundColor: '#f8fafc', minWidth: col.minWidth }}
+                      >
+                        {col.label}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+
+                <TableBody>
+                  {pagedPlantaRows.map((row) => (
+                    <TableRow key={row.planta} hover>
+                      {plantaColumns.map((col) => (
+                        <TableCell key={`${row.planta}-${col.key}`} align={col.align}>
+                          {col.key === 'm3hHistorico'
+                            ? formatCellValue(row[col.key], { decimals: 2 })
+                            : formatCellValue(row[col.key])}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+
+                  {pagedPlantaRows.length > 0 && (
+                    <TableRow>
+                      {plantaColumns.map((col) => (
+                        <TableCell key={`planta-total-${col.key}`} align={col.align} sx={{ fontWeight: 700 }}>
+                          {col.key === 'm3hHistorico'
+                            ? formatCellValue(plantaTotals[col.key], { decimals: 2 })
+                            : formatCellValue(plantaTotals[col.key])}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  )}
+                </TableBody>
+
+                <TableFooter>
+                  <TableRow>
+                    {plantaColumns.map((col) => (
+                      <TableCell
+                        key={`planta-footer-${col.key}`}
+                        align={col.align}
+                        sx={{ fontWeight: 700, backgroundColor: '#f8fafc', borderTop: '1px solid rgba(224, 224, 224, 1)' }}
+                      >
+                        {col.label}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </TableContainer>
+
+            <TablePagination
+              component="div"
+              count={filteredPlantaRows.length}
+              page={plantaPage}
+              onPageChange={handlePlantaChangePage}
+              rowsPerPage={plantaRowsPerPage}
+              onRowsPerPageChange={handlePlantaChangeRowsPerPage}
+              rowsPerPageOptions={[5, 10, 25]}
+              labelRowsPerPage="Filas"
+              labelDisplayedRows={({ from, to, count }) => `Mostrando ${from} a ${to} de ${count} entradas`}
+            />
           </Stack>
         </Paper>
       </Stack>
