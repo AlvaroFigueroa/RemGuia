@@ -70,6 +70,8 @@ const InformesAridosPage = () => {
   const [plantaPage, setPlantaPage] = useState(0);
   const [plantaRowsPerPage, setPlantaRowsPerPage] = useState(10);
 
+  const [avancesRows, setAvancesRows] = useState([]);
+
   const [avancesSearch, setAvancesSearch] = useState('');
   const [avancesPage, setAvancesPage] = useState(0);
   const [avancesRowsPerPage, setAvancesRowsPerPage] = useState(10);
@@ -104,44 +106,6 @@ const InformesAridosPage = () => {
       { key: 'saldo', label: 'Saldo', align: 'center', minWidth: 120 },
       { key: 'avance', label: 'Porcentaje de Avance', align: 'left', minWidth: 220 }
     ],
-    []
-  );
-
-  const avancesRows = useMemo(
-    () => [
-      {
-        obra: 'SAFI 413884',
-        subdestino: 'RN613 Bulnes',
-        requerimientos: 7990,
-        transportado: 8108
-      },
-      {
-        obra: 'SAFI 413884',
-        subdestino: 'RN828 Quillon',
-        requerimientos: 16470,
-        transportado: 16316
-      },
-      {
-        obra: 'SAFI 417998',
-        subdestino: 'RN310 San Nicolas',
-        requerimientos: 34535,
-        transportado: 5247
-      },
-      {
-        obra: 'SAFI 417998',
-        subdestino: 'RN296 Ninhue',
-        requerimientos: 7050,
-        transportado: 0
-      }
-    ].map((row) => {
-      const saldo = Number(row.requerimientos || 0) - Number(row.transportado || 0);
-      const avance = row.requerimientos ? (Number(row.transportado || 0) / Number(row.requerimientos || 0)) * 100 : 0;
-      return {
-        ...row,
-        saldo,
-        avance
-      };
-    }),
     []
   );
 
@@ -218,6 +182,11 @@ const InformesAridosPage = () => {
 
   const extractDestino = useCallback((record) => {
     const raw = record?.destino ?? record?.destination ?? record?.Destino ?? '';
+    return typeof raw === 'string' ? raw.trim() : '';
+  }, []);
+
+  const extractSubDestino = useCallback((record) => {
+    const raw = record?.subDestino ?? record?.subdestino ?? record?.subDestination ?? record?.SubDestino ?? '';
     return typeof raw === 'string' ? raw.trim() : '';
   }, []);
 
@@ -324,6 +293,32 @@ const InformesAridosPage = () => {
     }
     return value || '';
   }, [decimalFormatter, numberFormatter]);
+
+  const sumTransportMaterials = useCallback((record) => {
+    return (
+      toNumber(record?.base_1_5 ?? record?.base_1_5_50 ?? record?.base_1_5Arcilla ?? record?.base_1_5_550) +
+      toNumber(record?.base_arcilla ?? record?.Arcilla ?? record?.baseArcilla) +
+      toNumber(record?.base_1_550 ?? record?.base_1_5_550 ?? record?.base1550) +
+      toNumber(record?.base_2 ?? record?.base2) +
+      toNumber(record?.grava_1_5 ?? record?.Grava_1_5 ?? record?.grava15) +
+      toNumber(record?.grava ?? record?.Grava) +
+      toNumber(record?.integral ?? record?.Integral) +
+      toNumber(record?.bolones ?? record?.Bolones)
+    );
+  }, [toNumber]);
+
+  const sumRequerimientoMaterials = useCallback((req) => {
+    return (
+      toNumber(req?.base_1_5 ?? req?.base15 ?? req?.Base_1_5) +
+      toNumber(req?.base_arcilla ?? req?.Arcilla ?? req?.baseArcilla) +
+      toNumber(req?.base_1_550 ?? req?.base_1_5_550 ?? req?.base1550) +
+      toNumber(req?.base_2 ?? req?.base2) +
+      toNumber(req?.grava_1_5 ?? req?.Grava_1_5 ?? req?.grava15) +
+      toNumber(req?.grava ?? req?.Grava) +
+      toNumber(req?.integral ?? req?.Integral) +
+      toNumber(req?.bolones ?? req?.Bolones)
+    );
+  }, [toNumber]);
 
   const plantaColumns = useMemo(
     () => [
@@ -450,10 +445,13 @@ const InformesAridosPage = () => {
         paramsPlanta.append('endDate', toDate);
         const responsePlantaPromise = fetch(`${transporteApiBaseUrl}/planta_by_date.php?${paramsPlanta.toString()}`);
 
-        const [allResult, periodResult, plantaResult] = await Promise.allSettled([
+        const responseReqPromise = fetch(`${transporteApiBaseUrl}/requerimientos.php`);
+
+        const [allResult, periodResult, plantaResult, reqResult] = await Promise.allSettled([
           responseAllPromise,
           responsePeriodPromise,
-          responsePlantaPromise
+          responsePlantaPromise,
+          responseReqPromise
         ]);
 
         if (allResult.status !== 'fulfilled' || !allResult.value.ok) {
@@ -478,6 +476,19 @@ const InformesAridosPage = () => {
         }
         const periodRecords = Array.isArray(payload?.data) ? payload.data : [];
         const periodAggregates = sumMaterials(periodRecords, destinos);
+
+        let reqFailed = false;
+        let reqRows = [];
+        if (reqResult.status === 'fulfilled' && reqResult.value.ok) {
+          const payloadReq = await reqResult.value.json();
+          if (payloadReq?.success) {
+            reqRows = Array.isArray(payloadReq?.data) ? payloadReq.data : [];
+          } else {
+            reqFailed = true;
+          }
+        } else {
+          reqFailed = true;
+        }
 
         let plantaFailed = false;
         if (plantaResult.status === 'fulfilled' && plantaResult.value.ok) {
@@ -531,18 +542,59 @@ const InformesAridosPage = () => {
         });
 
         setRows(nextRows);
+
+        const transportePorObra = new Map();
+        allRecords.forEach((record) => {
+          const obra = extractDestino(record);
+          const sub = extractSubDestino(record);
+          if (!obra || !sub) return;
+          const key = `${obra.toLowerCase()}||${sub.toLowerCase()}`;
+          const prev = transportePorObra.get(key) || 0;
+          transportePorObra.set(key, prev + sumTransportMaterials(record));
+        });
+
+        const nextAvances = reqRows
+          .map((req) => {
+            const obra = (req?.destino || '').toString().trim();
+            const sub = (req?.subdestino || req?.subDestino || '').toString().trim();
+            if (!obra || !sub) return null;
+
+            const key = `${obra.toLowerCase()}||${sub.toLowerCase()}`;
+            const requerimientos = sumRequerimientoMaterials(req);
+            const transportado = transportePorObra.get(key) || 0;
+            const saldo = requerimientos - transportado;
+            const avance = requerimientos ? (transportado / requerimientos) * 100 : 0;
+
+            return {
+              obra,
+              subdestino: sub,
+              requerimientos,
+              transportado,
+              saldo,
+              avance
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => {
+            const byObra = a.obra.localeCompare(b.obra, 'es', { sensitivity: 'base' });
+            if (byObra !== 0) return byObra;
+            return a.subdestino.localeCompare(b.subdestino, 'es', { sensitivity: 'base' });
+          });
+
+        setAvancesRows(nextAvances);
         setAppliedRange({ from: fromDate, to: toDate });
         setToast({
           open: true,
-          severity: plantaFailed ? 'warning' : 'success',
-          message: plantaFailed
-            ? `Consulta lista. Destinos OK (${nextRows.length}). Planta no se pudo cargar (API/CORS).`
+          severity: plantaFailed || reqFailed ? 'warning' : 'success',
+          message: plantaFailed || reqFailed
+            ? `Consulta lista. Destinos OK (${nextRows.length}).${plantaFailed ? ' Planta no se pudo cargar (API/CORS).' : ''}${reqFailed ? ' Avances en obra no se pudo cargar (API/CORS).' : ''}`
             : `Consulta lista. Mostrando ${nextRows.length} destinos.`
         });
       } catch (queryError) {
         console.error(queryError);
         setRows([]);
         setPlantaRows([]);
+        setAvancesRows([]);
         setToast({ open: true, severity: 'error', message: queryError?.message || 'No se pudo consultar la información.' });
       } finally {
         setIsLoading(false);
@@ -550,7 +602,7 @@ const InformesAridosPage = () => {
     };
 
     run();
-  }, [fromDate, pickLastDestinosByMaxId, sumMaterials, toDate, transporteApiBaseUrl]);
+  }, [extractDestino, extractSubDestino, fromDate, pickLastDestinosByMaxId, sumMaterials, sumRequerimientoMaterials, sumTransportMaterials, toDate, transporteApiBaseUrl]);
 
   const buildCsv = useCallback((items) => {
     const header = columns.map((col) => col.label);
