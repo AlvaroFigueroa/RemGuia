@@ -955,14 +955,9 @@ const InformesAridosPage = () => {
                     const avanceExceso = Math.max(0, avanceRaw - 100);
                     const excesoWidth = Math.max(0, Math.min(100, avanceExceso));
                     const isOver = avanceExceso > 0;
-                    const saldoAbs = Math.abs(saldo);
-                    const saldoLabel = saldo > 0 ? 'Falta' : saldo < 0 ? 'Exceso' : 'OK';
-                    const saldoColor = saldo > 0 ? 'warning.main' : saldo < 0 ? 'error.main' : 'success.main';
-                    const saldoBg = saldo > 0
-                      ? 'rgba(245,124,0,0.12)'
-                      : saldo < 0
-                        ? 'rgba(211,47,47,0.12)'
-                        : 'rgba(46,125,50,0.12)';
+                    const saldoIsOver = saldo < 0;
+                    const saldoColor = saldoIsOver ? 'error.main' : 'success.main';
+                    const saldoBg = saldoIsOver ? 'rgba(211,47,47,0.10)' : 'rgba(46,125,50,0.10)';
 
                     return (
                       <TableRow key={`${row.obra}-${row.subdestino}`} hover>
@@ -974,21 +969,18 @@ const InformesAridosPage = () => {
                           <Box
                             sx={{
                               display: 'inline-flex',
-                              flexDirection: 'column',
                               alignItems: 'center',
-                              px: 1.25,
-                              py: 0.6,
-                              borderRadius: 2,
+                              justifyContent: 'center',
+                              px: 1.5,
+                              py: 0.75,
+                              borderRadius: 999,
                               backgroundColor: saldoBg,
                               border: '1px solid rgba(0,0,0,0.08)',
                               minWidth: 92
                             }}
                           >
-                            <Typography variant="caption" sx={{ fontWeight: 900, lineHeight: 1, color: saldoColor }}>
-                              {saldoLabel}
-                            </Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 800, lineHeight: 1.1, color: 'text.primary' }}>
-                              {formatCellValue(saldoAbs)}
+                            <Typography variant="body2" sx={{ fontWeight: 900, lineHeight: 1.1, color: saldoColor }}>
+                              {saldo < 0 ? `-${formatCellValue(Math.abs(saldo))}` : formatCellValue(saldo)}
                             </Typography>
                           </Box>
                         </TableCell>
